@@ -37,6 +37,8 @@ set_up_page_tables:
     ;
     ; connect pml4 and pml3
 
+    ;
+
     ; write a loop that initializes pml3 to map 4GBs
     ret
 
