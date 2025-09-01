@@ -1,7 +1,9 @@
 [package]
 name = "hello-os"
 version = "0.1.0"
-authors = ["Anton Burtsev <aburtsev@uci.edu>"]
+authors = ["Anton Burtsev <aburtsev@uci.edu>", 
+    "William House <u1450486@umail.utah.edu>"]
+    
 edition = "2024"
 
 [profile.dev]

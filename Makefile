@@ -1,6 +1,6 @@
 kernel := build/hello-os
 prebuilt_iso := grub-prebuilt.iso
-#prebuilt_iso :=
+# prebuilt_iso :=
 
 iso ?= build/hello-os.iso
 
