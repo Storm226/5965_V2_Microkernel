@@ -16,7 +16,8 @@ fn panic(_info: &PanicInfo) -> ! {
 // put no mangle
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_main() -> ! {
-    serial_println!("Hello from Rust!");
+    serial_println!("Hello this shit works wtf is up bitchessssssssssssssssssssssss");
+    dsahfj
     loop{}
 }
 
