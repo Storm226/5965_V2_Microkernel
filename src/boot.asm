@@ -10,8 +10,6 @@ long_mode_start:
     ; initialize segments
     ; setup stack
 
-    ;
-
     call rust_main
 
     hlt

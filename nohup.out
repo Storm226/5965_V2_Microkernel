@@ -1,0 +1,1 @@
+Gtk-Message: 10:07:24.267: Not loading module "atk-bridge": The functionality is provided by GTK natively. Please try to not load it.
