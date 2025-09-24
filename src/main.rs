@@ -7,7 +7,6 @@ use interrupts::init_idt;
 
 mod serial;
 mod interrupts;
-mod lib;
 
 // This function named panic is our panic handler
 #[panic_handler]
@@ -22,9 +21,12 @@ fn panic(_info: &PanicInfo) -> ! {
 pub extern "C" fn rust_main() -> ! {
     serial_println!("Hello from Rust!");
 
-    init();
-
+    init_idt();
     serial_println!("IDT initialized!");
+
+    x86_64::instructions::interrupts::int3();
+
+    serial_println!("It didin't crash!");
 
 
     loop{}
