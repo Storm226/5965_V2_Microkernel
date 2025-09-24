@@ -11,6 +11,7 @@ fn panic(_info: &PanicInfo) -> ! {
     loop{}
 }
 
+//
 // We dont wan't the compiler to generate some 
 // weird nebulous string for our name so we 
 // put no mangle
