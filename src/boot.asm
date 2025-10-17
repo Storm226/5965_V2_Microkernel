@@ -34,10 +34,31 @@ start:
 
 
 set_up_page_tables:
-    ;
+    
     ; connect pml4 and pml3
+    mov eax, p3_table
+    or eax, 0b11  
+    mov [p4_table], eax
 
-    ; write a loop that initializes pml3 to map 4GBs
+    mov ecx, 0  ; counter variable
+
+; write a loop that initializes pml3 to map 4GBs
+.map_hp3_table
+    mov eax, 1 << 30 ; 1GiB
+    mul ecx         ; start address of ecx-th page
+
+    ;edx contains upper half
+    or eax, 0b10000011 ; present, writable, very big
+
+    ;no 64 bit mode yet
+
+    mov [p3_table + ecx * 8], eax ; map ecx-th entry
+    mov [p3_table + ecx * 8 + 4], edx ; map ecx-th entry
+
+    inc ecx         ; increment counter variable
+    cmp ecx, 0x4   ; if counter == 4, 4 entries in p3 mapped
+    jne .map_hp3_table
+
     ret
 
 enable_paging:
@@ -92,5 +113,4 @@ p3_table:
 stack_bottom:
     resb 4096 * 4 ; Reserve this many bytes
 stack_top:
-
 

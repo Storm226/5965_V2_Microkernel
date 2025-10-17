@@ -16,6 +16,9 @@ use x86::msr;
 use crate::gdt::{GlobalDescriptorTable, TaskStateSegment};
 use crate::interrupt::x86_xapic::XAPIC;
 
+
+// right now there is single static cpu
+// later on, there could be more
 static mut NEW_CPU: Cpu = Cpu::new();
 
 /// Size of an IST stack.
@@ -63,9 +66,9 @@ unsafe impl Sync for Cpu {}
 
 impl Cpu {
     pub const fn new() -> Self {
-        Self {
-            // Implement this
-        }
+        // all this is doing is saying cpus should probably
+        // start with zeroed memory
+        unsafe { mem::zeroed() }        
     }
 }
 
@@ -75,10 +78,7 @@ impl Cpu {
 /// return it from this method
 pub fn get_current() -> &'static mut Cpu {
     // Implement this
-}
-
-pub fn get_cpu_id() -> i32 {
-    // Implement this
+    return NEW_CPU;
 }
 
 pub fn get_cpu_id() -> i32 {

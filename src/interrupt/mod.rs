@@ -13,6 +13,7 @@ mod lapic;
 mod mps;
 pub mod x86_xapic;
 
+
 use core::arch::{asm, naked_asm};
 use idt::Idt;
 use x86::io::{inb, outb};
@@ -139,6 +140,7 @@ unsafe extern "C" fn invalid_opcode(regs: &mut InterruptStackFrame) {}
 /// Implement other handlers here
 unsafe extern "C" fn timer(regs: &mut InterruptStackFrame) {
     // print .
+    serial_println!(". ");
 }
 
 /// Registers passed to the interrupt handler
@@ -161,6 +163,13 @@ pub struct InterruptStackFrame {
     pub rdi: u64,
     pub rax: u64,
     // Implement: add the 5 values + error code added by the hardware
+
+    pub ss: u64, 
+    pub rsp: u64,
+    pub rflags: u64,
+    pub cs: u64,
+    pub rip: u64,
+    pub error_code: u64,
 }
 
 /// Initializes global interrupt controllers.
@@ -183,7 +192,7 @@ pub unsafe fn init() {
         // of course you need handler implementations, check invalid_opcode above
         // idt.breakpoint.set_handler_fn(wrap_interrupt!(breakpoint));
         // idt.page_fault.set_handler_fn(wrap_interrupt_with_error_code!(page_fault));
-        // idt.interrupts[IRQ_TIMER].set_handler_fn(wrap_interrupt!(timer));
+        idt.interrupts[IRQ_TIMER].set_handler_fn(wrap_interrupt!(timer));
 
         let ioapic_base = mps::probe_ioapic();
         ioapic::init(ioapic_base);

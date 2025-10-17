@@ -72,6 +72,51 @@ pub unsafe fn init_cpu() {
         GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
     };
 
+      gdt.kernel_code = {
+        let mut access = AccessByte::new();
+        access.set_privilege(0);
+        access.set_executable(true);
+        access.set_read_write(true);
+
+        GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+    };
+
+      gdt.kernel_data = {
+        let mut access = AccessByte::new();
+        access.set_privilege(0);
+        access.set_executable(false);
+        access.set_read_write(true);
+
+        GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+    };
+
+      gdt.user_code = {
+        let mut access = AccessByte::new();
+        access.set_privilege(3);
+        access.set_executable(true);
+        access.set_read_write(true);
+
+        GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+    };
+
+      gdt.user_data = {
+        let mut access = AccessByte::new();
+        access.set_privilege(3);
+        access.set_executable(false);
+        access.set_read_write(true);
+
+        GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+    };
+
+    gdt.tss = {
+        let mut access = SystemAccessByte::new();
+        access.set_privilege(3);
+        access.set_executable(false);
+        access.set_read_write(true);
+
+        BigGdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+    };
+
     // You need to initialize other GDT entries, e.g., kernel data, user
     // code and data and TSS
     //
