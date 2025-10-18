@@ -23,7 +23,7 @@ fn panic(_info: &PanicInfo) -> ! {
 // put no mangle
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_main() -> ! {
-    serial_println!("Hello from Rust!");
+   // serial_println!("Hello from Rust!");
 
     // i promise i will be safe and only
     // do this once per cpu reset
