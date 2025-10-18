@@ -10,6 +10,7 @@
 use core::arch::asm;
 use core::mem::MaybeUninit;
 use core::ptr;
+use core::mem;
 
 use x86::msr;
 
@@ -78,9 +79,10 @@ impl Cpu {
 /// return it from this method
 pub fn get_current() -> &'static mut Cpu {
     // Implement this
-    return NEW_CPU;
+    return unsafe {&mut NEW_CPU } ;
 }
 
 pub fn get_cpu_id() -> i32 {
     // Implement this
+    return unsafe { NEW_CPU.id.try_into().unwrap()};
 }

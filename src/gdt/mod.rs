@@ -25,7 +25,7 @@ use x86::Ring;
 use x86::bits64::segmentation::load_cs;
 pub use x86::bits64::task::TaskStateSegment;
 use x86::dtables::{DescriptorTablePointer, lgdt};
-use x86::segmentation::{SegmentSelector, load_ds, load_es, load_ss};
+use x86::segmentation::{load_ds, load_es, load_ss, SegmentSelector, SystemDescriptorTypes64};
 use x86::task::load_tr;
 
 use crate::cpu::IstStack;
@@ -109,12 +109,11 @@ pub unsafe fn init_cpu() {
     };
 
     gdt.tss = {
-        let mut access = SystemAccessByte::new();
+        let mut access = SystemAccessByte::new(SystemDescriptorType::AvailableTss);
         access.set_privilege(3);
-        access.set_executable(false);
-        access.set_read_write(true);
 
-        BigGdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
+        BigGdtEntry::new(tss_addr as _, mem::size_of::<TaskStateSegment>().try_into().unwrap() 
+        , access, GDT_F_LONG_MODE)
     };
 
     // You need to initialize other GDT entries, e.g., kernel data, user

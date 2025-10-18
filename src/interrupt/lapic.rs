@@ -30,8 +30,8 @@ pub unsafe fn init() {
     let apic_region: &'static mut [u32] = unsafe { probe_apic() };
     let mut xapic = XAPIC::new(apic_region);
     xapic.attach();
-    xapic.tsc_set_oneshot(0xfffffffe);
     xapic.tsc_enable(32);
+    xapic.tsc_set_oneshot(0xfffffffe);
 
     cpu.xapic.write(xapic);
 }

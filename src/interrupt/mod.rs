@@ -17,6 +17,7 @@ pub mod x86_xapic;
 use core::arch::{asm, naked_asm};
 use idt::Idt;
 use x86::io::{inb, outb};
+use crate::{interrupt::lapic::end_of_interrupt, serial_print};
 
 //pub use lapic::{boot_ap, end_of_interrupt, set_timer};
 
@@ -60,13 +61,33 @@ macro_rules! wrap_interrupt_with_error_code {
                 "push rsi",
                 "push rdx",
                 "push rcx",
+                "push r8",
+                "push r9",
+                "push r10",
+                "push r11",
+                "push rbx",
+                "push rbp",
+                "push r12",
+                "push r13",
+                "push r14",
+                "push r15", 
 
-                 // push missing registers
                 // fn handler(registers: &mut InterruptStackFrame)
                 "mov rdi, rsp",
                 "call {handler}",
 
                 // pop missing registers
+              
+                "pop r15", 
+                "pop r14",
+                "pop r13",
+                "pop r12",
+                "pop rbp",
+                "pop rbx",
+                "pop r11",
+                "pop r10",
+                "pop r9",
+                "pop r8",
                 "pop rcx",
                 "pop rdx",
                 "pop rsi",
@@ -106,18 +127,39 @@ macro_rules! wrap_interrupt {
                 "push rsi",
                 "push rdx",
                 "push rcx",
-                // ... same as above
+                "push r8",
+                "push r9",
+                "push r10",
+                "push r11",
+                "push rbx",
+                "push rbp",
+                "push r12",
+                "push r13",
+                "push r14",
+                "push r15", 
+
 
                 // fn handler(registers: &mut InterruptStackFrame)
                 "mov rdi, rsp",
                 "call {handler}",
 
                 // .. don't forget
+                "pop r15", 
+                "pop r14",
+                "pop r13",
+                "pop r12",
+                "pop rbp",
+                "pop rbx",
+                "pop r11",
+                "pop r10",
+                "pop r9",
+                "pop r8",
                 "pop rcx",
                 "pop rdx",
                 "pop rsi",
                 "pop rdi",
                 "pop rax",
+
                 "add rsp, 8", // error_code
 
                 "iretq",
@@ -140,7 +182,9 @@ unsafe extern "C" fn invalid_opcode(regs: &mut InterruptStackFrame) {}
 /// Implement other handlers here
 unsafe extern "C" fn timer(regs: &mut InterruptStackFrame) {
     // print .
-    serial_println!(". ");
+    serial_print!(". ");
+    end_of_interrupt();
+
 }
 
 /// Registers passed to the interrupt handler
@@ -163,13 +207,12 @@ pub struct InterruptStackFrame {
     pub rdi: u64,
     pub rax: u64,
     // Implement: add the 5 values + error code added by the hardware
-
-    pub ss: u64, 
-    pub rsp: u64,
-    pub rflags: u64,
-    pub cs: u64,
-    pub rip: u64,
     pub error_code: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64, 
 }
 
 /// Initializes global interrupt controllers.
