@@ -182,7 +182,7 @@ unsafe extern "C" fn invalid_opcode(regs: &mut InterruptStackFrame) {}
 /// Implement other handlers here
 unsafe extern "C" fn timer(regs: &mut InterruptStackFrame) {
     // print .
-    serial_print!(". ");
+    serial_print!(".");
     end_of_interrupt();
 
 }
