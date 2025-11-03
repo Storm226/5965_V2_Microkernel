@@ -51,4 +51,5 @@ SECTIONS {
     . = ALIGN(4K);
   }
 
+  _end = .;
 }

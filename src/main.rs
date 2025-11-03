@@ -7,8 +7,14 @@ mod error;
 mod gdt;
 mod interrupt;
 mod serial;
+mod memory;
+mod multibootv2;
+mod architecture;
 
 use core::panic::PanicInfo;
+
+// A: we may not need this
+//use crate::architecture::kernel_end;
 
 use crate::gdt::init_cpu;
 
@@ -32,5 +38,9 @@ pub extern "C" fn rust_main() -> ! {
         interrupt::init();
         interrupt::init_cpu();        
         };
+
+    // so we can see that it exists
+    //serial_print!("{}", kernel_end());
+
     loop{}
 }
