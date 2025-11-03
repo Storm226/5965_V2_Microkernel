@@ -1,5 +1,7 @@
 global start
 global long_mode_start
+global _bootinfo
+
 extern rust_main
 
 section .text
@@ -17,6 +19,8 @@ long_mode_start:
 
 bits 32    ; By default, GRUB sets us to 32-bit mode.
 start:
+
+    call check_multiboot
 
     ; setup page tables 
     call set_up_page_tables
@@ -84,6 +88,19 @@ enable_paging:
 
     ret
 
+
+check_multiboot:
+    cmp eax, 0x36d76289 ; If multiboot, this value will be in the eax register on boot.
+    mov [_bootinfo], ebx
+    jne .no_multiboot
+    ret
+
+
+.no_multiboot:
+    mov al, "0"
+    jmp error
+
+
 ; Prints `ERR: ` and the given error code to screen and hangs.
 ; parameter: error code (in ascii) in al
 error:
@@ -93,24 +110,32 @@ error:
     mov byte  [0xb800a], al
     hlt
 
-section .rodata
-gdt64:
-    dq 0 ; zero entry
-.code: equ $ - gdt64 
-    dq (1<<43) | (1<<44) | (1<<47) | (1<<53) ; code segment
-.pointer:
-    dw $ - gdt64 - 1
-    dq gdt64
 
-section .bss
-align 4096
+    ;############ READ ONLY DATA ############
+    section .rodata
+    gdt64:
+        dq 0 ; zero entry
+    .code: equ $ - gdt64 
+        dq (1<<43) | (1<<44) | (1<<47) | (1<<53) ; code segment
+    .pointer:
+        dw $ - gdt64 - 1
+        dq gdt64
 
-p4_table:
-    resb 4096
-p3_table:
-    resb 4096
 
-stack_bottom:
-    resb 4096 * 4 ; Reserve this many bytes
-stack_top:
 
+    ;############ BSS ############
+    ;### This stores unitialized static/global variables ###
+    section .bss
+    align 4096
+
+    p4_table:
+        resb 4096
+    p3_table:
+        resb 4096
+
+    stack_bottom:
+        resb 4096 * 4 ; Reserve this many bytes
+    stack_top:
+
+    _bootinfo:
+    resb 8 ; Place holder to save bootinfo entry

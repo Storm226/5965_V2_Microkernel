@@ -1,0 +1,26 @@
+
+
+
+
+Two main data structures: 
+    - Metadata region (page_array)
+        - tracks state of all physical pages in system
+        - maintains metadata about alloc && free pages
+        - each element of page_array represents a physical page start from 0
+
+    - Two lists that track free pages of 4kb and 2MB sizes
+    - we maintain the list pointers next and prev inside page_array elements
+
+Two main operations: 
+    -split() -> convert 2MB pages into 4KB pages 
+    -merge() -> merge 4kb pages into a 4MB page
+
+
+Instructions step order: 
+    1) allocating metadata region
+        -we need to get the size of avaialable physical memory from grub boot loader
+        - use the _end symbol that we add to linker to mark last address oocupied by kernel in memory
+        - alloc page_array right above kernel, starting from the next page above _end rounding up the _end address to the next page
+
+    2) modify the linker script and add the symbol similiar to how its done in RedLead
+    

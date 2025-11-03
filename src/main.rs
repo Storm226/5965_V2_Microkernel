@@ -12,11 +12,18 @@ mod multibootv2;
 mod architecture;
 
 use core::panic::PanicInfo;
+use crate::multibootv2::BootInformation;
 
 // A: we may not need this
 //use crate::architecture::kernel_end;
 
 use crate::gdt::init_cpu;
+
+
+unsafe extern "C" {
+    #[unsafe(no_mangle)]
+    static _bootinfo: usize;
+}
 
 // This function named panic is our panic handler
 #[panic_handler]
@@ -33,14 +40,40 @@ pub extern "C" fn rust_main() -> ! {
 
     // i promise i will be safe and only
     // do this once per cpu reset
+
     unsafe {
         gdt::init_cpu();
-        interrupt::init();
-        interrupt::init_cpu();        
-        };
+    }
 
-    // so we can see that it exists
-    //serial_print!("{}", kernel_end());
+    unsafe { 
+        interrupt::init();
+    }
+
+    unsafe {
+        interrupt::init_cpu();
+    }
+
+    // okay so interrupts are enabled
+    // now we can begin setting up allocator
+
+    let bootinfo = unsafe {
+        serial_println!("multibootv2 tag found at {:x}", _bootinfo as usize);
+        multibootv2::load(_bootinfo)
+    };
+
+    print_multiboot_information(bootinfo);
 
     loop{}
+}
+
+
+//
+// Simple helper function to print out boot information
+// 
+fn print_multiboot_information(bootinfo: BootInformation) {
+
+    // print some basic information around boot 
+    serial_println!("Boot info start address: {:#x}", bootinfo.start_address());
+    serial_println!("Boot info end address: {:#x}", bootinfo.end_address());
+    serial_println!("Boot info total size: {} bytes", bootinfo.total_size());
 }
