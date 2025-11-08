@@ -1,7 +1,7 @@
 // Declare your allocator here
 
-// #[global_allocator]
-// pub static ALLOCATOR: YourAllocatorType = ...;
+//#[global_allocator]
+//pub static ALLOCATOR: YourAllocatorType = ...;
 
 use crate::_bootinfo;
 use crate::MemoryMapTag;
@@ -10,6 +10,32 @@ use crate::kernel_end;
 use crate::serial_println;
 use crate::round_up;
 use crate::multibootv2::MemoryArea;
+use core::slice;
+
+
+pub struct Page_Arrays{
+    pages_4k : &'static mut [Page4k]
+}
+
+pub struct Page4k{
+    state: Page_State,
+    prev: u64,
+    next: u64
+}
+
+pub struct Page2MB{
+    state: Page_State,
+    prev: u64,
+    next: u64
+}
+
+pub enum Page_State {
+    Unavailable, 
+    Alloc,
+    Free
+}
+
+
 
 // setup
 pub fn init_alloc() {
@@ -19,6 +45,8 @@ pub fn init_alloc() {
     // memory
     let mut total_area_bytes: u64 = 0;
     let mut four_k_page_count: u32 = 0;
+
+    
 
     let bootinfo = unsafe {
         serial_println!("multibootv2 tag found at {:x}", _bootinfo as usize);
@@ -37,38 +65,22 @@ pub fn init_alloc() {
             area.typ()
         );
 
-        // we have a mut ref to our page count
+        
         // for each area accumulate n_pages as apt
-        account_pages(area, &mut four_k_page_count);
-                    
-    }
+    count_4k_pages(area, &mut four_k_page_count);
+    
+    // okay so here is our 4k page array
+    let array_4k: &[Page4k] = unsafe {slice::from_raw_parts(kernel_end() as *const Page4k, four_k_page_count as usize)};
 
-    serial_println!("the total area size is {}", total_area_bytes);
-    serial_println!("the total 4k_page count is {}", four_k_page_count);
+    Page_Arrays{array_4k};    
+
+    }
 }
 
 
 // okay so given a range of memory, (start, end)
-// we want to make page table entries for the kernel 
-// splitting it up into 4kb pages (for now)
-fn account_pages(area: &MemoryArea,  page_count : &mut u32){
-
-    if(area.start_address() == 0x100000){
-        serial_println!("caught");
-    }
-    
-    let x = kernel_end();
-    let y = area.end_address();
-    let size = y - x;
-    serial_println!("size is {}", size);
-    serial_println!("area size is {}", area.size());
-
-
-    
-
-    let n = area.size() / 4096;
-    *page_count += n as u32;
-}
+// we just wanna say how many pages of memory are there
+fn count_4k_pages(area: &MemoryArea,  page_count : &mut u32){ *page_count += (area.size() / 4096) as u32;}
 
 
 //
