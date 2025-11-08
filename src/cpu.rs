@@ -8,15 +8,14 @@
 //! - IST stack spaces
 
 use core::arch::asm;
+use core::mem;
 use core::mem::MaybeUninit;
 use core::ptr;
-use core::mem;
 
 use x86::msr;
 
 use crate::gdt::{GlobalDescriptorTable, TaskStateSegment};
 use crate::interrupt::x86_xapic::XAPIC;
-
 
 // right now there is single static cpu
 // later on, there could be more
@@ -69,7 +68,7 @@ impl Cpu {
     pub const fn new() -> Self {
         // all this is doing is saying cpus should probably
         // start with zeroed memory
-        unsafe { mem::zeroed() }        
+        unsafe { mem::zeroed() }
     }
 }
 
@@ -79,10 +78,10 @@ impl Cpu {
 /// return it from this method
 pub fn get_current() -> &'static mut Cpu {
     // Implement this
-    return unsafe {&mut NEW_CPU } ;
+    return unsafe { &mut NEW_CPU };
 }
 
 pub fn get_cpu_id() -> i32 {
     // Implement this
-    return unsafe { NEW_CPU.id.try_into().unwrap()};
+    return unsafe { NEW_CPU.id.try_into().unwrap() };
 }

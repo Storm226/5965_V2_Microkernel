@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! round_up {
     ($num:expr, $s:expr) => {
@@ -28,8 +27,6 @@ impl PowersOf2 for usize {
         31 - self.leading_zeros() as u8
     }
 }
-
-
 
 const KERNEL_START: u64 = 0x10_0000;
 pub static mut KERNEL_END: u64 = 0;

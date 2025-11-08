@@ -37,6 +37,10 @@ impl MemoryArea {
         self.base_addr
     }
 
+    pub fn set_start_address(&mut self, new_address: u64) {
+        self.base_addr = new_address;
+    }
+
     pub fn end_address(&self) -> u64 {
         self.base_addr + self.length
     }
@@ -48,6 +52,8 @@ impl MemoryArea {
     pub fn typ(&self) -> u32 {
         self.typ
     }
+
+    
 }
 
 #[derive(Clone, Debug)]

@@ -25,7 +25,7 @@ use x86::Ring;
 use x86::bits64::segmentation::load_cs;
 pub use x86::bits64::task::TaskStateSegment;
 use x86::dtables::{DescriptorTablePointer, lgdt};
-use x86::segmentation::{load_ds, load_es, load_ss, SegmentSelector, SystemDescriptorTypes64};
+use x86::segmentation::{SegmentSelector, SystemDescriptorTypes64, load_ds, load_es, load_ss};
 use x86::task::load_tr;
 
 use crate::cpu::IstStack;
@@ -72,7 +72,7 @@ pub unsafe fn init_cpu() {
         GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
     };
 
-      gdt.kernel_code = {
+    gdt.kernel_code = {
         let mut access = AccessByte::new();
         access.set_privilege(0);
         access.set_executable(true);
@@ -81,7 +81,7 @@ pub unsafe fn init_cpu() {
         GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
     };
 
-      gdt.kernel_data = {
+    gdt.kernel_data = {
         let mut access = AccessByte::new();
         access.set_privilege(0);
         access.set_executable(false);
@@ -90,7 +90,7 @@ pub unsafe fn init_cpu() {
         GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
     };
 
-      gdt.user_code = {
+    gdt.user_code = {
         let mut access = AccessByte::new();
         access.set_privilege(3);
         access.set_executable(true);
@@ -99,7 +99,7 @@ pub unsafe fn init_cpu() {
         GdtEntry::new(0, 0, access, GDT_F_LONG_MODE)
     };
 
-      gdt.user_data = {
+    gdt.user_data = {
         let mut access = AccessByte::new();
         access.set_privilege(3);
         access.set_executable(false);
@@ -112,8 +112,12 @@ pub unsafe fn init_cpu() {
         let mut access = SystemAccessByte::new(SystemDescriptorType::AvailableTss);
         access.set_privilege(3);
 
-        BigGdtEntry::new(tss_addr as _, mem::size_of::<TaskStateSegment>().try_into().unwrap() 
-        , access, GDT_F_LONG_MODE)
+        BigGdtEntry::new(
+            tss_addr as _,
+            mem::size_of::<TaskStateSegment>().try_into().unwrap(),
+            access,
+            GDT_F_LONG_MODE,
+        )
     };
 
     // You need to initialize other GDT entries, e.g., kernel data, user

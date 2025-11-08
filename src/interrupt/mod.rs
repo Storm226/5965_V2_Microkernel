@@ -13,11 +13,10 @@ mod lapic;
 mod mps;
 pub mod x86_xapic;
 
-
+use crate::{interrupt::lapic::end_of_interrupt, serial_print};
 use core::arch::{asm, naked_asm};
 use idt::Idt;
 use x86::io::{inb, outb};
-use crate::{interrupt::lapic::end_of_interrupt, serial_print};
 
 //pub use lapic::{boot_ap, end_of_interrupt, set_timer};
 
@@ -70,15 +69,15 @@ macro_rules! wrap_interrupt_with_error_code {
                 "push r12",
                 "push r13",
                 "push r14",
-                "push r15", 
+                "push r15",
 
                 // fn handler(registers: &mut InterruptStackFrame)
                 "mov rdi, rsp",
                 "call {handler}",
 
                 // pop missing registers
-              
-                "pop r15", 
+
+                "pop r15",
                 "pop r14",
                 "pop r13",
                 "pop r12",
@@ -136,7 +135,7 @@ macro_rules! wrap_interrupt {
                 "push r12",
                 "push r13",
                 "push r14",
-                "push r15", 
+                "push r15",
 
 
                 // fn handler(registers: &mut InterruptStackFrame)
@@ -144,7 +143,7 @@ macro_rules! wrap_interrupt {
                 "call {handler}",
 
                 // .. don't forget
-                "pop r15", 
+                "pop r15",
                 "pop r14",
                 "pop r13",
                 "pop r12",
@@ -184,7 +183,6 @@ unsafe extern "C" fn timer(regs: &mut InterruptStackFrame) {
     // print .
     serial_print!(".");
     end_of_interrupt();
-
 }
 
 /// Registers passed to the interrupt handler
@@ -212,7 +210,7 @@ pub struct InterruptStackFrame {
     pub cs: u64,
     pub rflags: u64,
     pub rsp: u64,
-    pub ss: u64, 
+    pub ss: u64,
 }
 
 /// Initializes global interrupt controllers.

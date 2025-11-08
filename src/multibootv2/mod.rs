@@ -21,12 +21,11 @@ mod memory_map;
 mod module;
 
 // A: so fuck these two lines line
-    //use crate::arch::memory::BASE_PAGE_SIZE;
-    //use crate::arch::{kernel_end, KERNEL_END};
+//use crate::arch::memory::BASE_PAGE_SIZE;
+//use crate::arch::{kernel_end, KERNEL_END};
 
+use crate::architecture::{KERNEL_END, kernel_end};
 use x86::bits64::paging::BASE_PAGE_SIZE;
-use crate::architecture::{kernel_end, KERNEL_END};
-
 
 pub unsafe fn load(address: usize) -> BootInformation {
     assert_eq!(0, address & 0b111);
