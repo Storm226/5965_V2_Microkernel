@@ -14,15 +14,15 @@ use core::slice;
 use core::ptr;
 
 #[repr(C)]
-pub struct State {
-    // Define fields of State as needed
-    // Example:
-    pub unavail, 
-    pub free_4k
-    pub alloc_4k,
-    pub free_2mb,
-    pub alloc_2mb,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum State {
+    Unavail,
+    Free4K,
+    Alloc4K,
+    Free2MB,
+    Alloc2MB,
 }
+
 
 #[repr(C)]
 pub struct Page_Array_Element {
@@ -50,8 +50,8 @@ pub fn init_alloc() {
     // so we should probably think about that fact as we reason about avail
     // memory
     let mut total_area_bytes: u64 = 0;
-    let mut four_k_page_count: u32 = 0;
-    let mut two_mb_page_count: u32 = 0;
+    let mut four_k_page_count: u64 = 0;
+    let mut two_mb_page_count: u64 = 0;
     
     
 
@@ -84,6 +84,28 @@ pub fn init_alloc() {
     // allocating 2mb pages
     two_mb_page_count = four_k_page_count / 512; 
 
+
+    //8556544 (decimal) = 0x0082A000 (hex)
+    // kernel end should be rounded up to some 4kb page boundary, so, i suppose
+    let pages_up_to_kernel_end : u64 = kernel_end() / 4096;
+
+    // YES IT MAKES SENSE 
+    // 2089! thats how many pages we mark as unavail
+    
+    serial_println!("kernel end is : {}", pages_up_to_kernel_end);
+    
+     // this number isint even necessarily useful , we need to figure out how many 4kb pages are in kernel_end
+     // this is not quite right thats okay
+    let mut remainder : u64 = four_k_page_count - pages_up_to_kernel_end - (two_mb_page_count * 512); 
+
+    // 32639 total 4k pages (on my machine) -> 383 first pages can never be a complete 2mb page
+    serial_println!("four kb page count {}", four_k_page_count);
+
+    // 63 total 2mb pages (on my machine)
+    serial_println!("two mb page count {}", two_mb_page_count);
+
+   // serial_println!("remainder {}", remainder);
+
     
     unsafe {
     // We’re assuming `page_array` points to valid, writable memory
@@ -110,9 +132,14 @@ pub fn init_alloc() {
           }
 }
 
+
+
+
+
+
 // okay so given a range of memory, (start, end)
 // we just wanna say how many pages of memory are there
-fn count_4k_pages(area: &MemoryArea,  page_count : &mut u32){ *page_count += (area.size() / 4096) as u32;}
+fn count_4k_pages(area: &MemoryArea,  page_count : &mut u64){ *page_count += (area.size() / 4096) as u64;}
 
 
 //
