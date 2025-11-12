@@ -11,28 +11,34 @@ use crate::serial_println;
 use crate::round_up;
 use crate::multibootv2::MemoryArea;
 use core::slice;
+use core::ptr;
 
-
-pub struct Page_Arrays{
-    pages_4k : &'static mut [Page4k]
+#[repr(C)]
+pub struct State {
+    // Define fields of State as needed
+    // Example:
+    pub unavail, 
+    pub free_4k
+    pub alloc_4k,
+    pub free_2mb,
+    pub alloc_2mb,
 }
 
-pub struct Page4k{
-    state: Page_State,
-    prev: u64,
-    next: u64
-}
+#[repr(C)]
+pub struct Page_Array_Element {
+    // Pointers for 4 KB page linked list
+    pub next_4k: *mut Page_Array_Element,
+    pub prev_4k: *mut Page_Array_Element,
 
-pub struct Page2MB{
-    state: Page_State,
-    prev: u64,
-    next: u64
-}
+    // Pointers for 2 MB page linked list
+    pub next_2mb: *mut Page_Array_Element,
+    pub prev_2mb: *mut Page_Array_Element,
 
-pub enum Page_State {
-    Unavailable, 
-    Alloc,
-    Free
+    // Embedded state
+    pub state: State,
+
+    // Count of something (e.g., number of pages)
+    pub count: i32,
 }
 
 
@@ -67,16 +73,41 @@ pub fn init_alloc() {
 
         
         // for each area accumulate n_pages as apt
-    count_4k_pages(area, &mut four_k_page_count);
-    
-    // okay so here is our 4k page array
-    let array_4k: &[Page4k] = unsafe {slice::from_raw_parts(kernel_end() as *const Page4k, four_k_page_count as usize)};
-
-    Page_Arrays{array_4k};    
-
+        count_4k_pages(area, &mut four_k_page_count);
     }
-}
+    // okay so here is our page_array
+    let page_array: &[Page_Array_Element] = unsafe {slice::from_raw_parts(kernel_end() as *const Page_Array_Element, four_k_page_count as usize)};
 
+
+    // we need to figure out how many 2mb pages we can get and we also need to define the boundary of where we begin
+    // allocating 2mb pages
+
+
+    
+    unsafe {
+    // We’re assuming `page_array` points to valid, writable memory
+            let len = page_array.len();
+        
+            for i in 0..len 
+                {
+                    let elem_ptr = page_array.as_ptr().add(i) as *mut Page_Array_Element;
+            
+                    // Set previous pointer
+                    if i == 0 {
+                        (*elem_ptr).prev_4k = ptr::null_mut();
+                    } else {
+                        (*elem_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
+                    }
+            
+                    // Set next pointer
+                    if i + 1 == len {
+                        (*elem_ptr).next_4k = ptr::null_mut();
+                    } else {
+                        (*elem_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
+                    }
+                }
+          }
+}
 
 // okay so given a range of memory, (start, end)
 // we just wanna say how many pages of memory are there
