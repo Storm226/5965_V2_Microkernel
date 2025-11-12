@@ -51,7 +51,8 @@ pub fn init_alloc() {
     // memory
     let mut total_area_bytes: u64 = 0;
     let mut four_k_page_count: u32 = 0;
-
+    let mut two_mb_page_count: u32 = 0;
+    
     
 
     let bootinfo = unsafe {
@@ -81,7 +82,7 @@ pub fn init_alloc() {
 
     // we need to figure out how many 2mb pages we can get and we also need to define the boundary of where we begin
     // allocating 2mb pages
-
+    two_mb_page_count = four_k_page_count / 512; 
 
     
     unsafe {
