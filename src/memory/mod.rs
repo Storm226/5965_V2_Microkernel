@@ -159,6 +159,8 @@ pub fn init_alloc() {
             // within a given 2mb page
             let mut counter_internal_2mb = 512;
 
+            let mut counter_2mb_pages_init = 0;
+
             // here we loop from the beginning of our useful pages till end
             for i in not_useful_pages_count..len 
                 {
@@ -199,27 +201,45 @@ pub fn init_alloc() {
                             (*element_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
 
                           // set previous 2mb
-                        (*element_ptr).prev_2mb = ptr::null_mut();
-
-
-                        // set next 2mb
-                        // we only want to do this for every valid 2mb page boundary
-                        if counter_internal_2mb == 512{
-                            (*element_ptr).next_2mb = page_array.as_ptr().add(i + 512) as *mut Page_Array_Element;
-                            
-                            counter_internal_2mb--;
+                        if counter_2mb_pages_init == 0 {
+                            (*element_ptr).prev_2mb = ptr::null_mut();
                         }
+
+                        else {
+
+                            // if it is on the boundary of a 2mb page, we should set the next and previous page
+                            if counter_internal_2mb == 512 {
+                                (*element_ptr).next_2mb = page_array.as_ptr().add(i + 512) as *mut Page_Array_Element;
+                                
+                                counter_internal_2mb--;
+                            }
+                            else {
+
+                            }
+                        }
+
+
+                      
                         
 
 
 
-                        
+                        counter_2mb_pages_init++;
 
                     }                    
                 }
           }
 }
 
+
+
+
+// once the page array is actually set up properly
+// we need a a pointer to head of 4k list, 
+// and a pointer to head of 2mb list
+
+// after that, we just need to implement merge and split
+// and we need to implement when they call free
 
 
 
