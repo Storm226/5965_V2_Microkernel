@@ -94,9 +94,15 @@ pub fn init_alloc() {
     
     serial_println!("kernel end is : {}", pages_up_to_kernel_end);
     
-     // this number isint even necessarily useful , we need to figure out how many 4kb pages are in kernel_end
-     // this is not quite right thats okay
-    let mut remainder : u64 = four_k_page_count - pages_up_to_kernel_end - (two_mb_page_count * 512); 
+    // how many 4k pages are useful to the system
+    // this number indicates starting from the next 4k page boundary from kernel end, how 
+    // many useful_pages there are for our system
+    let mut useful_pages_count : u64 = four_k_page_count - pages_up_to_kernel_end;
+
+    // 5 not useful , 10 useful
+    let mut not_useful_pages_count : u64 = four_k_page_count - useful_pages_count;
+
+    let mut remainder : u64 = useful_pages_count % 512;
 
     // 32639 total 4k pages (on my machine) -> 383 first pages can never be a complete 2mb page
     serial_println!("four kb page count {}", four_k_page_count);
@@ -104,7 +110,11 @@ pub fn init_alloc() {
     // 63 total 2mb pages (on my machine)
     serial_println!("two mb page count {}", two_mb_page_count);
 
-   // serial_println!("remainder {}", remainder);
+    serial_println!("useful four kb page count {}", useful_pages_count);
+
+    serial_println!("the first n not useful four kb page count {}", not_useful_pages_count);
+
+    serial_println!("the first n useful pages which cant be a 2mb page  {}", remainder);
 
     
     unsafe {
@@ -113,21 +123,35 @@ pub fn init_alloc() {
         
             for i in 0..len 
                 {
-                    let elem_ptr = page_array.as_ptr().add(i) as *mut Page_Array_Element;
+                    let element_ptr = page_array.as_ptr().add(i) as *mut Page_Array_Element;
             
+
+                    if i < not_useful_pages_count.try_into().unwrap(){
+                        (*element_ptr).state = State::Unavail;
+
+                    }
+                    else {
+                        (*element_ptr).state  = State::Free4K;
+                    }
+
+
                     // Set previous pointer
                     if i == 0 {
-                        (*elem_ptr).prev_4k = ptr::null_mut();
+                        (*element_ptr).prev_4k = ptr::null_mut();
                     } else {
-                        (*elem_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
+                        (*element_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
                     }
             
                     // Set next pointer
                     if i + 1 == len {
-                        (*elem_ptr).next_4k = ptr::null_mut();
+                        (*element_ptr).next_4k = ptr::null_mut();
                     } else {
-                        (*elem_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
+                        (*element_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
                     }
+
+                    
+
+
                 }
           }
 }
