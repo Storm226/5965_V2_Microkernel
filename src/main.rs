@@ -56,7 +56,10 @@ pub extern "C" fn rust_main() -> ! {
     // okay so interrupts are enabled
     // now we can begin setting up allocator
 
-    memory::init_alloc();
+    unsafe {
+        memory::init_alloc();
+    }
+    
 
     loop {}
 }
