@@ -122,7 +122,7 @@ pub fn init_alloc() {
     
     unsafe {
     // We’re assuming `page_array` points to valid, writable memory
-            let len = page_array.len();
+            let len : u64 = page_array.len().try_into().unwrap();
             let mut count = 0;
 
 
@@ -131,7 +131,7 @@ pub fn init_alloc() {
             // prior to kernel_end
             for i in 0..not_useful_pages_count
                 {
-                    let element_ptr = page_array.as_ptr().add(i) as *mut Page_Array_Element;
+                    let element_ptr = page_array.as_ptr().add((i as usize)) as *mut Page_Array_Element;
 
 
                     (*element_ptr).state = State::Unavail;
@@ -139,14 +139,14 @@ pub fn init_alloc() {
                     if i == 0 {
                         (*element_ptr).prev_4k = ptr::null_mut();
                     } else {
-                        (*element_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
+                        (*element_ptr).prev_4k = page_array.as_ptr().add((i as usize) - 1) as *mut Page_Array_Element;
                     }
             
                     // Set next pointer
                     if i + 1 == len {
                         (*element_ptr).next_4k = ptr::null_mut();
                     } else {
-                        (*element_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
+                        (*element_ptr).next_4k = page_array.as_ptr().add((i as usize) + 1) as *mut Page_Array_Element;
                     }
 
                 }
@@ -164,24 +164,25 @@ pub fn init_alloc() {
             // here we loop from the beginning of our useful pages till end
             for i in not_useful_pages_count..len 
                 {
-                    let element_ptr = page_array.as_ptr().add(i) as *mut Page_Array_Element;
+                    let element_ptr = page_array.as_ptr().add((i as usize)) as *mut Page_Array_Element;
             
 
                     //--------- FOURKB PAGES WHICH CAN'T BE PART OF A VALID 2MB PAGE --------\\
                     // it is a free 4kb page
                     if counter_till_2mb < remainder {
-                        (element_ptr).state = State::Free4k;
+                        (*element_ptr).state = State::Free4K;
 
 
                         // set previous
-                        (*element_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
+                        (*element_ptr).prev_4k = page_array.as_ptr().add((i - 1) as usize) as *mut Page_Array_Element;
 
                         // set next
-                        (*element_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
+                        (*element_ptr).next_4k = page_array.as_ptr().add((i + 1) as usize) as *mut Page_Array_Element;
 
-                        counter_till_2mb++;
+                        counter_till_2mb += 1;
                         // TODO, we aren't currently setting 2mb pages, is that intentional?
                         // idk what is correct here. 
+                        continue;
 
                     }
 
@@ -189,16 +190,16 @@ pub fn init_alloc() {
                     //--------- TWO MB PAGES --------\\
 
                     // we have hit the useful 2mb boundary 
-                    else {
-                        (element_ptr).state = State::Free2MB;
+                    
+                        (*element_ptr).state = State::Free2MB;
 
 
                         // we still want to track 4kb pages internal to 2mb pages
                             // set previous 4k
-                            (*element_ptr).prev_4k = page_array.as_ptr().add(i - 1) as *mut Page_Array_Element;
+                            (*element_ptr).prev_4k = page_array.as_ptr().add((i as usize) - 1) as *mut Page_Array_Element;
 
                             // set next 4k
-                            (*element_ptr).next_4k = page_array.as_ptr().add(i + 1) as *mut Page_Array_Element;
+                            (*element_ptr).next_4k = page_array.as_ptr().add((i as usize) + 1) as *mut Page_Array_Element;
 
                           // set previous 2mb
                         if counter_2mb_pages_init == 0 {
@@ -209,9 +210,9 @@ pub fn init_alloc() {
 
                             // if it is on the boundary of a 2mb page, we should set the next and previous page
                             if counter_internal_2mb == 512 {
-                                (*element_ptr).next_2mb = page_array.as_ptr().add(i + 512) as *mut Page_Array_Element;
+                                (*element_ptr).next_2mb = page_array.as_ptr().add((i + 512) as usize) as *mut Page_Array_Element;
                                 
-                                counter_internal_2mb--;
+                                counter_internal_2mb -= 1;
                             }
                             else {
 
@@ -224,11 +225,13 @@ pub fn init_alloc() {
 
 
 
-                        counter_2mb_pages_init++;
+                        counter_2mb_pages_init += 1;
 
-                    }                    
+                                        
                 }
           }
+
+          
 }
 
 
