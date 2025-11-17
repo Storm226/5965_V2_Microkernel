@@ -82,7 +82,7 @@ pub fn init_alloc() {
     let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<Page_Array_Element>();
     let page_array_pages = (page_array_size_bytes + 4095) / 4096; // round up
 
-    serialprintkn!("the number of pages our page_array occupies is: {}", page_array_pages);
+    serial_println!("the number of pages our page_array occupies is: {}", page_array_pages);
     
     // we need to figure out how many 2mb pages we can get and we also need to define the boundary of where we begin
     // allocating 2mb pages
@@ -100,7 +100,8 @@ pub fn init_alloc() {
     // how many 4k pages are useful to the system
     // this number indicates starting from the next 4k page boundary from kernel end, how
     // many useful_pages there are for our system
-    let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end;
+    //let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end;
+    let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end - page_array_pages;
 
     let mut not_useful_pages_count: u64 = four_k_page_count - useful_pages_count;
 
@@ -164,6 +165,8 @@ pub fn init_alloc() {
 
         let mut counter_2mb_pages_init = 0;
 
+
+        //--------- USEFUL PAGES ----------- \\
         // here we loop from the beginning of our useful pages till end
         for i in not_useful_pages_count..len {
             let element_ptr = page_array.as_ptr().add((i as usize)) as *mut Page_Array_Element;
@@ -188,7 +191,6 @@ pub fn init_alloc() {
             }
 
             //--------- TWO MB PAGES --------\\
-
             // we have hit the useful 2mb boundary
 
             (*element_ptr).state = State::Free2MB;
