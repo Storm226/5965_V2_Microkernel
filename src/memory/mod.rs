@@ -133,6 +133,7 @@ pub fn init_alloc() {
         let len: u64 = page_array.len().try_into().unwrap();
         let mut count = 0;
 
+        //--------- NOT USEFUL PAGES ----------- \\
         // initialize all of our unavailable pages including kernel regions, bios, everything
         // prior to kernel_end
         for i in 0..not_useful_pages_count {
@@ -157,12 +158,13 @@ pub fn init_alloc() {
         }
 
         // we use this guy to track when we hit the first useful 2mb page boundary
+        // we increment this inside of the first if block to track, until we hit that
+        // remainder threshold, we have not yet gotten to a clean 2mb boundary
         let mut counter_till_2mb = 0;
 
         // we use this other guy to keep track of how many 4kb pages we've initialized
         // within a given 2mb page
         let mut counter_internal_2mb = 512;
-
         let mut counter_2mb_pages_init = 0;
 
 
@@ -209,6 +211,9 @@ pub fn init_alloc() {
                 (*element_ptr).prev_2mb = ptr::null_mut();
                 continue;
             }
+            // TODO: Set previous 2mb in case of not first 2mb page
+            // ie: (*element_ptr).prev_2mb = last one or w/e
+            
             // if it is on the boundary of a 2mb page, we should set the next and previous page
             if counter_internal_2mb == 512 {
                 (*element_ptr).next_2mb =
