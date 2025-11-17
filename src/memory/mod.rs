@@ -129,124 +129,93 @@ pub fn init_alloc() {
     );
 
     unsafe {
-        // We’re assuming `page_array` points to valid, writable memory
-        let len: u64 = page_array.len().try_into().unwrap();
-        let mut count = 0;
+        // Use usize for indices
+        let len_usize: usize = page_array.len();
+        let not_useful_usize: usize = not_useful_pages_count as usize;
+        let useful_usize: usize = len_usize - not_useful_usize;
+        let remainder_usize: usize = remainder as usize;
 
-        //--------- NOT USEFUL PAGES ----------- \\
-        // initialize all of our unavailable pages including kernel regions, bios, everything
-        // prior to kernel_end
-        for i in 0..not_useful_pages_count {
-            let element_ptr = page_array.as_ptr().add((i as usize)) as *mut Page_Array_Element;
+        // Basic sanity check
+        debug_assert!(page_array_pages as u64 + pages_up_to_kernel_end <= four_k_page_count);
 
-            (*element_ptr).state = State::Unavail;
-            // Set previous pointer
-            if i == 0 {
-                (*element_ptr).prev_4k = ptr::null_mut();
-            } else {
-                (*element_ptr).prev_4k =
-                    page_array.as_ptr().add((i as usize) - 1) as *mut Page_Array_Element;
-            }
-
-            // Set next pointer
-            if i + 1 == len {
-                (*element_ptr).next_4k = ptr::null_mut();
-            } else {
-                (*element_ptr).next_4k =
-                    page_array.as_ptr().add((i as usize) + 1) as *mut Page_Array_Element;
-            }
+        // 1) initialize all fields to safe defaults for entire array (no garbage)
+        for idx in 0..len_usize {
+            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            (*p).next_4k = ptr::null_mut();
+            (*p).prev_4k = ptr::null_mut();
+            (*p).next_2mb = ptr::null_mut();
+            (*p).prev_2mb = ptr::null_mut();
+            (*p).state = State::Unavail;
+            (*p).count = 0;
         }
 
-        // we use this guy to track when we hit the first useful 2mb page boundary
-        // we increment this inside of the first if block to track, until we hit that
-        // remainder threshold, we have not yet gotten to a clean 2mb boundary
-        let mut counter_till_2mb = 0;
-
-        // we use this other guy to keep track of how many 4kb pages we've initialized
-        // within a given 2mb page
-        let mut counter_internal_2mb = 0;
-        let mut counter_2mb_pages_init = 0;
-
-
-        //--------- USEFUL PAGES ----------- \\
-        // here we loop from the beginning of our useful pages till end
-        for i in not_useful_pages_count..len {
-            let element_ptr = page_array.as_ptr().add((i as usize)) as *mut Page_Array_Element;
-
-            //--------- FOURKB PAGES WHICH CAN'T BE PART OF A VALID 2MB PAGE --------\\
-                if counter_till_2mb < remainder {
-                    (*element_ptr).state = State::Free4K;
-
-                    // set previous
-                    (*element_ptr).prev_4k =
-                        page_array.as_ptr().add((i - 1) as usize) as *mut Page_Array_Element;
-
-                    // set next
-                    (*element_ptr).next_4k =
-                        page_array.as_ptr().add((i + 1) as usize) as *mut Page_Array_Element;
-
-                    counter_till_2mb += 1;
-                    continue;
-                }
-
-            //--------- TWO MB PAGES --------\\
-            // we have hit the useful 2mb boundary
-
-                // we still want to track 4kb pages internal to 2mb pages
-                // set previous 4k
-                (*element_ptr).prev_4k =
-                    page_array.as_ptr().add((i as usize) - 1) as *mut Page_Array_Element;
-
-                // set next 4k
-                (*element_ptr).next_4k =
-                    page_array.as_ptr().add((i as usize) + 1) as *mut Page_Array_Element;
-
-                // we set every member of the 2mb list as a free 2mb, 
-                // we just set the count as 512 
-                (*element_ptr).state = State::Free2MB;
-
-                // we always increment to indicate we have defined another 4kb page within each 2mb page
-                // TODO should this possibly go at the end idk rn
-                counter_internal_2mb += 1;
-
-                
-                // ----- define the very first 2mb page only ------ \\
-                if counter_2mb_pages_init == 0 {
-                    (*element_ptr).prev_2mb = ptr::null_mut();
-                    (*element_ptr).next_2mb =
-                        page_array.as_ptr().add((i + 512) as usize) as *mut Page_Array_Element;
-
-                    // we set each 2mb page's count == 512 to indicate this 2mb page
-                    // has 512 4kb pages internally that it tracks
-                    (*element_ptr).count = 512;
-                    
-                    // this is only to indicate that we have initialized our first 2mb page
-                    counter_2mb_pages_init += 1;
-                    continue;
-                }
-                
-
-
-            // ----- define the remaining 2mb pages ------ \\
-                // if it is on the boundary of a 2mb page, we should set the next and previous page
-                // as well as set its count to be == 512
-                if counter_internal_2mb == 512 {
-                    (*element_ptr).prev_2mb = 
-                        page_array.as_ptr().add((i - 512) as usize) as *mut Page_Array_Element;
-                    (*element_ptr).next_2mb = 
-                        page_array.as_ptr().add((i + 512) as usize) as *mut Page_Array_Element;
-
-                    (*element_ptr).count = 512;
-
-                    // we should also reset our  internal 4kb page counter == 0
-                    counter_internal_2mb = 0;
-                    continue;
-                } 
-                else {
-                    (*element_ptr).count = 0;
-                }
+        // 2) mark pages before first usable page as Unavail and set 4k links there
+        for idx in 0..not_useful_usize {
+            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            (*p).state = State::Unavail;
+            (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
+            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
         }
-    }
+
+        // 3) Now the useful region: consume remainder (Free4K), then many 512-page superpages, then tail Free4K
+        let mut idx = not_useful_usize;
+
+        // consume remainder -> those useful pages that can't be part of a 2MB page
+        let mut rem = remainder_usize;
+        while rem > 0 && idx < len_usize {
+            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            (*p).state = State::Free4K;
+            (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
+            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
+            idx += 1;
+            rem -= 1;
+        }
+
+        // carve full 2MB superpages (512 * 4KB)
+        while idx + 512 <= len_usize {
+            // head of superpage
+            let head = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+
+            // set prev_2mb for head (null if this is the first)
+            if counter_2mb_pages_init == 0 {
+                (*head).prev_2mb = ptr::null_mut();
+            } else {
+                // previous head is at idx - 512
+                (*head).prev_2mb = page_array.as_ptr().add(idx - 512) as *mut Page_Array_Element;
+                // also link previous head's next_2mb to this head
+                let prev_head = page_array.as_ptr().add(idx - 512) as *mut Page_Array_Element;
+                (*prev_head).next_2mb = head;
+            }
+
+            // set head metadata
+            (*head).state = State::Free2MB;
+            (*head).count = 512;
+
+            // initialize all 512 pages in the superpage
+            for j in 0..512 {
+                let pidx = idx + j;
+                let p = page_array.as_ptr().add(pidx) as *mut Page_Array_Element;
+                (*p).state = State::Free2MB; // mark as part of a 2MB block
+                (*p).count = if j == 0 { 512 } else { 0 }; // only head stores count
+                (*p).prev_4k = if pidx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(pidx - 1) as *mut _ };
+                (*p).next_4k = if pidx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(pidx + 1) as *mut _ };
+                // prev_2mb/next_2mb remain null for non-heads (head was already set)
+            }
+
+            counter_2mb_pages_init += 1;
+            idx += 512;
+        }
+
+        // leftover tail pages (less than 512) -> Free4K
+        while idx < len_usize {
+            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            (*p).state = State::Free4K;
+            (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
+            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
+            idx += 1;
+        }
+    } // end unsafe
+
 }
 
 // once the page array is actually set up properly
