@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use uart_16550::SerialPort;
 use core::format_args;
+
 // lazy static has something to do with saying like
 // don't compile me at compile time or something
 lazy_static! {

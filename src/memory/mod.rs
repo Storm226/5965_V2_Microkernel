@@ -95,36 +95,36 @@ pub fn init_alloc() {
     // YES IT MAKES SENSE
     // 2089! thats how many pages we mark as unavail
 
-    serial_println!("kernel end is : {}", pages_up_to_kernel_end);
+    serial_println!("The kernel ends at : {}", pages_up_to_kernel_end);
 
     // how many 4k pages are useful to the system
     // this number indicates starting from the next 4k page boundary from kernel end, how
     // many useful_pages there are for our system
     //let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end;
-    let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end - page_array_pages;
+    let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end - (page_array_pages as u64);
 
     let mut not_useful_pages_count: u64 = four_k_page_count - useful_pages_count;
 
     let mut remainder: u64 = useful_pages_count % 512;
 
     // 32639 total 4k pages (on my machine) -> 383 first pages can never be a complete 2mb page
-    serial_println!("four kb page count {}", four_k_page_count);
+    serial_println!("The total number of four kb pages is:  {}", four_k_page_count);
 
     // 63 total 2mb pages (on my machine)
-    serial_println!("two mb page count {}", two_mb_page_count);
+    serial_println!("The total number of 2MB pages is:  {}", two_mb_page_count);
 
     // 30550
-    serial_println!("useful four kb page count {}", useful_pages_count);
+    serial_println!("The number of useful four kb pages is:  {}", useful_pages_count);
 
     // 2089
     serial_println!(
-        "the first n not useful four kb page count {}",
+        "The amount of fourkb pages which come first and so are not useful is: {}",
         not_useful_pages_count
     );
 
     // 342
     serial_println!(
-        "the first n useful pages which cant be a 2mb page  {}",
+        "The number of 4kb pages which are useful but cannot become a 2mb page is:  {}",
         remainder
     );
 
@@ -211,6 +211,7 @@ pub fn init_alloc() {
                 (*element_ptr).prev_2mb = ptr::null_mut();
                 continue;
             }
+            
             // TODO: Set previous 2mb in case of not first 2mb page
             // ie: (*element_ptr).prev_2mb = last one or w/e
             
