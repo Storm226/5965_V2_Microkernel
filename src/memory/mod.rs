@@ -78,6 +78,12 @@ pub fn init_alloc() {
         )
     };
 
+    // we must ensure that we do not give away ptrs to memory and overwrite our page_array
+    let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<Page_Array_Element>();
+    let page_array_pages = (page_array_size_bytes + 4095) / 4096; // round up
+
+    serialprintkn!("the number of pages our page_array occupies is: {}", page_array_pages);
+    
     // we need to figure out how many 2mb pages we can get and we also need to define the boundary of where we begin
     // allocating 2mb pages
     two_mb_page_count = four_k_page_count / 512;
@@ -96,7 +102,6 @@ pub fn init_alloc() {
     // many useful_pages there are for our system
     let mut useful_pages_count: u64 = four_k_page_count - pages_up_to_kernel_end;
 
-    // 5 not useful , 10 useful
     let mut not_useful_pages_count: u64 = four_k_page_count - useful_pages_count;
 
     let mut remainder: u64 = useful_pages_count % 512;
