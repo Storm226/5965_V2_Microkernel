@@ -192,8 +192,6 @@ pub fn init_alloc() {
             //--------- TWO MB PAGES --------\\
             // we have hit the useful 2mb boundary
 
-                
-
                 // we still want to track 4kb pages internal to 2mb pages
                 // set previous 4k
                 (*element_ptr).prev_4k =
@@ -203,7 +201,12 @@ pub fn init_alloc() {
                 (*element_ptr).next_4k =
                     page_array.as_ptr().add((i as usize) + 1) as *mut Page_Array_Element;
 
+                // we set every member of the 2mb list as a free 2mb, 
+                // we just set the count as 512 
+                (*element_ptr).state = State::Free2MB;
+
                 // we always increment to indicate we have defined another 4kb page within each 2mb page
+                // TODO should this possibly go at the end idk rn
                 counter_internal_2mb += 1;
 
                 
@@ -213,9 +216,11 @@ pub fn init_alloc() {
                     (*element_ptr).next_2mb =
                         page_array.as_ptr().add((i + 512) as usize) as *mut Page_Array_Element;
 
+                    // we set each 2mb page's count == 512 to indicate this 2mb page
+                    // has 512 4kb pages internally that it tracks
                     (*element_ptr).count = 512;
-                    (*element_ptr).state = State::Free2MB;
                     
+                    // this is only to indicate that we have initialized our first 2mb page
                     counter_2mb_pages_init += 1;
                     continue;
                 }
@@ -224,6 +229,7 @@ pub fn init_alloc() {
 
             // ----- define the remaining 2mb pages ------ \\
                 // if it is on the boundary of a 2mb page, we should set the next and previous page
+                // as well as set its count to be == 512
                 if counter_internal_2mb == 512 {
                     (*element_ptr).prev_2mb = 
                         page_array.as_ptr().add((i - 512) as usize) as *mut Page_Array_Element;
@@ -231,24 +237,16 @@ pub fn init_alloc() {
                         page_array.as_ptr().add((i + 512) as usize) as *mut Page_Array_Element;
 
                     (*element_ptr).count = 512;
-                    (*element_ptr).state = State::Free2MB;
+
+                    // we should also reset our  internal 4kb page counter == 0
                     counter_internal_2mb = 0;
                     continue;
-
                 } 
-                // if it is not on the boundary of a 2mb page, we should define it as a 4kb page
                 else {
-                    (*element_ptr).state = State::Free4K;
+                    (*element_ptr).count = 0;
                 }
-
-                // if it is not on the boundary of a 2mb page, we should only treat it as a 4kb page,
-                // ie, we should not initialize their previous and next pointers
-                counter_internal_2mb += 1;
-
         }
     }
-
-    serial_println!("we got there");
 }
 
 // once the page array is actually set up properly
