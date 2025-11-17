@@ -12,6 +12,7 @@ use crate::round_up;
 use crate::serial_println;
 use core::ptr;
 use core::slice;
+use core::debug_assert;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -24,14 +25,14 @@ pub enum State {
 }
 
 #[repr(C)]
-pub struct Page_Array_Element {
+pub struct PageArrayElement {
     // Pointers for 4 KB page linked list
-    pub next_4k: *mut Page_Array_Element,
-    pub prev_4k: *mut Page_Array_Element,
+    pub next_4k: *mut PageArrayElement,
+    pub prev_4k: *mut PageArrayElement,
 
     // Pointers for 2 MB page linked list
-    pub next_2mb: *mut Page_Array_Element,
-    pub prev_2mb: *mut Page_Array_Element,
+    pub next_2mb: *mut PageArrayElement,
+    pub prev_2mb: *mut PageArrayElement,
 
     // Embedded state
     pub state: State,
@@ -71,15 +72,15 @@ pub fn init_alloc() {
         count_4k_pages(area, &mut four_k_page_count);
     }
     // okay so here is our page_array
-    let page_array: &[Page_Array_Element] = unsafe {
+    let page_array: &[PageArrayElement] = unsafe {
         slice::from_raw_parts(
-            kernel_end() as *const Page_Array_Element,
+            kernel_end() as *const PageArrayElement,
             four_k_page_count as usize,
         )
     };
 
     // we must ensure that we do not give away ptrs to memory and overwrite our page_array
-    let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<Page_Array_Element>();
+    let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<PageArrayElement>();
     let page_array_pages = (page_array_size_bytes + 4095) / 4096; // round up
 
     serial_println!("the number of pages our page_array occupies is: {}", page_array_pages);
@@ -130,17 +131,18 @@ pub fn init_alloc() {
 
     unsafe {
         // Use usize for indices
-        let len_usize: usize = page_array.len();
+        let len_page_array_usize: usize = page_array.len();
         let not_useful_usize: usize = not_useful_pages_count as usize;
-        let useful_usize: usize = len_usize - not_useful_usize;
+        let useful_usize: usize = len_page_array_usize - not_useful_usize;
         let remainder_usize: usize = remainder as usize;
+        let mut counter_2mb_pages_init = 0;
 
         // Basic sanity check
         debug_assert!(page_array_pages as u64 + pages_up_to_kernel_end <= four_k_page_count);
 
         // 1) initialize all fields to safe defaults for entire array (no garbage)
-        for idx in 0..len_usize {
-            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+        for idx in 0..len_page_array_usize {
+            let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
             (*p).next_4k = ptr::null_mut();
             (*p).prev_4k = ptr::null_mut();
             (*p).next_2mb = ptr::null_mut();
@@ -151,10 +153,10 @@ pub fn init_alloc() {
 
         // 2) mark pages before first usable page as Unavail and set 4k links there
         for idx in 0..not_useful_usize {
-            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
             (*p).state = State::Unavail;
             (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
-            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
+            (*p).next_4k = if idx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
         }
 
         // 3) Now the useful region: consume remainder (Free4K), then many 512-page superpages, then tail Free4K
@@ -162,28 +164,28 @@ pub fn init_alloc() {
 
         // consume remainder -> those useful pages that can't be part of a 2MB page
         let mut rem = remainder_usize;
-        while rem > 0 && idx < len_usize {
-            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+        while rem > 0 && idx < len_page_array_usize {
+            let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
             (*p).state = State::Free4K;
             (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
-            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
+            (*p).next_4k = if idx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
             idx += 1;
             rem -= 1;
         }
 
         // carve full 2MB superpages (512 * 4KB)
-        while idx + 512 <= len_usize {
+        while idx + 512 <= len_page_array_usize {
             // head of superpage
-            let head = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
+            let head = page_array.as_ptr().add(idx) as *mut PageArrayElement;
 
             // set prev_2mb for head (null if this is the first)
             if counter_2mb_pages_init == 0 {
                 (*head).prev_2mb = ptr::null_mut();
             } else {
                 // previous head is at idx - 512
-                (*head).prev_2mb = page_array.as_ptr().add(idx - 512) as *mut Page_Array_Element;
+                (*head).prev_2mb = page_array.as_ptr().add(idx - 512) as *mut PageArrayElement;
                 // also link previous head's next_2mb to this head
-                let prev_head = page_array.as_ptr().add(idx - 512) as *mut Page_Array_Element;
+                let prev_head = page_array.as_ptr().add(idx - 512) as *mut PageArrayElement;
                 (*prev_head).next_2mb = head;
             }
 
@@ -194,11 +196,11 @@ pub fn init_alloc() {
             // initialize all 512 pages in the superpage
             for j in 0..512 {
                 let pidx = idx + j;
-                let p = page_array.as_ptr().add(pidx) as *mut Page_Array_Element;
+                let p = page_array.as_ptr().add(pidx) as *mut PageArrayElement;
                 (*p).state = State::Free2MB; // mark as part of a 2MB block
                 (*p).count = if j == 0 { 512 } else { 0 }; // only head stores count
                 (*p).prev_4k = if pidx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(pidx - 1) as *mut _ };
-                (*p).next_4k = if pidx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(pidx + 1) as *mut _ };
+                (*p).next_4k = if pidx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(pidx + 1) as *mut _ };
                 // prev_2mb/next_2mb remain null for non-heads (head was already set)
             }
 
@@ -206,14 +208,15 @@ pub fn init_alloc() {
             idx += 512;
         }
 
-        // leftover tail pages (less than 512) -> Free4K
-        while idx < len_usize {
-            let p = page_array.as_ptr().add(idx) as *mut Page_Array_Element;
-            (*p).state = State::Free4K;
-            (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
-            (*p).next_4k = if idx + 1 >= len_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
-            idx += 1;
-        }
+        // ----- NO TAIL ----- \\
+        // // leftover tail pages (less than 512) -> Free4K
+        // while idx < len_page_array_usize {
+        //     let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
+        //     (*p).state = State::Free4K;
+        //     (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
+        //     (*p).next_4k = if idx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
+        //     idx += 1;
+        // }
     } // end unsafe
 
 }
