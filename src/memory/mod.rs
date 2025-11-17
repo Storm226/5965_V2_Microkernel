@@ -231,7 +231,7 @@ pub fn init_alloc() {
                 }
           }
 
-          
+          serial_println!("we got there");
 }
 
 
