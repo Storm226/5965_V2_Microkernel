@@ -1,7 +1,6 @@
 // Declare your allocator here
 
-//#[global_allocator]
-//pub static ALLOCATOR: YourAllocatorType = ...;
+
 
 use crate::_bootinfo;
 use crate::MemoryMapTag;
@@ -13,6 +12,10 @@ use crate::serial_println;
 use core::ptr;
 use core::slice;
 use core::debug_assert;
+use core::alloc::{GlobalAlloc, Layout};
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::option::Option;
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -41,10 +44,281 @@ pub struct PageArrayElement {
     pub count: i32,
 }
 
+
+// this is what the physical allocator is
 pub struct PhysicalAllocator {
     free_4k_head: *mut PageArrayElement,
     free_2mb_head: *mut PageArrayElement,
+
+    /// Pointer to start of the page_array metadata (so we can index into it)
+    page_array_base: *mut PageArrayElement,
+    page_array_len: usize,
+
+    /// Optional: first usable physical page index (the index in page_array of first usable page)
+    first_usable_page_index: usize,
+    initialized: AtomicBool,
 }
+
+
+// this is a static reference to the physical allocator
+#[unsafe(no_mangle)]
+pub static mut KERNEL_PHYS_ALLOC: PhysicalAllocator = PhysicalAllocator::new_empty();
+
+
+// ------------ SATISFY GLOBALALLOC TRAIT FOR RUST ------------\\
+// ------------ ---------------------------------- ------------\\
+unsafe impl GlobalAlloc for PhysicalAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // simple policy:
+        // small allocations => 4K page
+        // medium allocations (<= 2MB) => 2MB page
+        // >2MB => null
+
+        if layout.size() == 0 {
+            return ptr::null_mut();
+        }
+
+        // If user asked for alignment > 4KiB, prefer 2MB if available
+        if layout.size() > 4096 && layout.size() <= 2 * 1024 * 1024 {
+            // allocate 2MB
+            let a = &mut KERNEL_PHYS_ALLOC;
+            return a.alloc_2mb();
+        }
+
+        // anything <= 4k -> give a 4k page
+        if layout.size() <= 4096 {
+            let a = &mut KERNEL_PHYS_ALLOC;
+            return a.alloc_4k();
+        }
+
+        // fallback: too large
+        ptr::null_mut()
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        if ptr.is_null() {
+            return;
+        }
+        let a = &mut KERNEL_PHYS_ALLOC;
+
+        // compute index to inspect metadata
+        match a.index_for_ptr(ptr) {
+            Some(idx) => {
+                // inspect metadata to figure out if it's a 4k or 2mb allocation
+                let p = a.page_array_base.add(idx);
+                match (*p).state {
+                    State::Alloc4K => a.free_4k(ptr),
+                    State::Alloc2MB => a.free_2mb(ptr),
+                    other => {
+                        // double-free or invalid free — ignore or panic depending on policy
+                        debug_assert!(false, "freeing pointer that is not allocated: state = {:?}", other);
+                    }
+                }
+            }
+            None => {
+                // pointer outside physical coverage; ignore
+            }
+        }
+    }
+}
+
+
+// -----------  PHYSICAL ALLOCATOR FUNCTIONS ---------- \\
+// -----------  ----------------------------- ---------- \\
+impl PhysicalAllocator {
+ 
+    /// Create an empty allocator placeholder; call install_page_array() once during init.
+    pub const fn new_empty() -> Self {
+        Self {
+            free_4k_head: ptr::null_mut(),
+            free_2mb_head: ptr::null_mut(),
+            page_array_base: ptr::null_mut(),
+            page_array_len: 0,
+            first_usable_page_index: 0,
+            initialized: AtomicBool::new(false),
+        }
+    }
+
+    /// Install the page_array metadata region so the allocator can operate.
+    /// Call this at the end of your init_alloc (inside the same unsafe context) after you set up the page_array.
+    pub unsafe fn install_page_array(
+        &mut self,
+        page_array_ptr: *mut PageArrayElement,
+        page_array_len: usize,
+        first_usable_page_index: usize,
+    ) {
+        self.page_array_base = page_array_ptr;
+        self.page_array_len = page_array_len;
+        self.first_usable_page_index = first_usable_page_index;
+
+        // find first free 4k and first free 2mb head from the metadata
+        self.free_4k_head = ptr::null_mut();
+        self.free_2mb_head = ptr::null_mut();
+
+        // scan metadata to set heads (first encountered free links)
+        for i in 0..page_array_len {
+            let p = page_array_ptr.add(i);
+            match (*p).state {
+                State::Free4K => {
+                    if self.free_4k_head.is_null() {
+                        self.free_4k_head = p;
+                    }
+                }
+                State::Free2MB => {
+                    // pick the head (count==512) as free_2mb_head
+                    if (*p).count == 512 && self.free_2mb_head.is_null() {
+                        self.free_2mb_head = p;
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.initialized.store(true, Ordering::Release);
+    }
+
+    /// Convert a page index (0..N) into the PageArrayElement pointer
+    #[inline(always)]
+    unsafe fn page_element_for_index(&self, idx: usize) -> *mut PageArrayElement {
+        self.page_array_base.add(idx)
+    }
+
+    /// Compute physical address (usize) of a page index
+    /// NOTE: assumes physical page 0 starts at address 0 (physical address = idx * 4096)
+    #[inline(always)]
+    fn phys_for_index(&self, idx: usize) -> usize {
+        idx * 4096
+    }
+
+    /// Convert a pointer returned to an index: assumes pointer is page-aligned and identity-mapped.
+    /// Returns None if pointer is outside manageable range.
+    #[inline(always)]
+    fn index_for_ptr(&self, ptr: *mut u8) -> Option<usize> {
+        let addr = ptr as usize;
+        if addr % 4096 != 0 {
+            return None;
+        }
+        let idx = addr / 4096;
+        if idx < self.page_array_len {
+            Some(idx)
+        } else {
+            None
+        }
+    }
+
+    /// Allocate one 4KB page (returns physical pointer as *mut u8)
+    /// Unsafe because it manipulates raw pointers and global state.
+    pub unsafe fn alloc_4k(&mut self) -> *mut u8 {
+        if self.free_4k_head.is_null() {
+            return ptr::null_mut();
+        }
+        // Pop head
+        let head = self.free_4k_head;
+        let next = (*head).next_4k;
+        if !next.is_null() {
+            (*next).prev_4k = ptr::null_mut();
+        }
+        self.free_4k_head = next;
+
+        // Mark allocated
+        (*head).state = State::Alloc4K;
+
+        // compute index of head
+        let idx = head.offset_from(self.page_array_base) as isize as usize;
+        self.phys_for_index(idx) as *mut u8
+    }
+
+    /// Free a single 4KB page given pointer (assumes identity mapping)
+    pub unsafe fn free_4k(&mut self, pptr: *mut u8) {
+        if !self.initialized.load(Ordering::Acquire) {
+            return;
+        }
+        let idx = match self.index_for_ptr(pptr) {
+            Some(i) => i,
+            None => return,
+        };
+        let p = self.page_array_base.add(idx);
+
+        // sanity check
+        debug_assert!((*p).state == State::Alloc4K);
+
+        (*p).state = State::Free4K;
+
+        // push onto front of free_4k_head
+        (*p).prev_4k = ptr::null_mut();
+        (*p).next_4k = self.free_4k_head;
+        if !self.free_4k_head.is_null() {
+            (*self.free_4k_head).prev_4k = p;
+        }
+        self.free_4k_head = p;
+    }
+
+    /// Allocate one 2MB superpage (returns physical pointer as *mut u8)
+    pub unsafe fn alloc_2mb(&mut self) -> *mut u8 {
+        if self.free_2mb_head.is_null() {
+            return ptr::null_mut();
+        }
+
+        // Pop head of 2MB list
+        let head = self.free_2mb_head;
+        let next = (*head).next_2mb;
+        if !next.is_null() {
+            (*next).prev_2mb = ptr::null_mut();
+        }
+        self.free_2mb_head = next;
+
+        // Mark all 512 pages as Alloc2MB
+        // head.index ... head.index + 511
+        let head_idx = head.offset_from(self.page_array_base) as isize as usize;
+        let count = (*head).count as usize;
+        debug_assert!(count == 512);
+
+        for j in 0..count {
+            let p = self.page_array_base.add(head_idx + j);
+            (*p).state = State::Alloc2MB;
+            // clear 4k links (so they won't be used in 4k list)
+            (*p).next_4k = ptr::null_mut();
+            (*p).prev_4k = ptr::null_mut();
+        }
+
+        self.phys_for_index(head_idx) as *mut u8
+    }
+
+    /// Free a 2MB superpage given pointer (assumes pointer is head of the 2MB region)
+    pub unsafe fn free_2mb(&mut self, pptr: *mut u8) {
+        if !self.initialized.load(Ordering::Acquire) {
+            return;
+        }
+        let idx = match self.index_for_ptr(pptr) {
+            Some(i) => i,
+            None => return,
+        };
+        let head = self.page_array_base.add(idx);
+        debug_assert!((*head).count as usize == 512);
+        debug_assert!((*head).state == State::Alloc2MB);
+
+        // mark all pages Free2MB
+        for j in 0..512usize {
+            let p = self.page_array_base.add(idx + j);
+            (*p).state = State::Free2MB;
+            // restore 4k links (we keep them as neutral; they were set during init)
+            // keep prev_2mb/next_2mb null for now; we'll push head onto 2mb free list
+            (*p).prev_4k = if idx + j == 0 { ptr::null_mut() } else { self.page_array_base.add(idx + j - 1) };
+            (*p).next_4k = if idx + j + 1 >= self.page_array_len { ptr::null_mut() } else { self.page_array_base.add(idx + j + 1) };
+        }
+
+        // link head into free_2mb_head list
+        (*head).prev_2mb = ptr::null_mut();
+        (*head).next_2mb = self.free_2mb_head;
+        if !self.free_2mb_head.is_null() {
+            (*self.free_2mb_head).prev_2mb = head;
+        }
+        self.free_2mb_head = head;
+    }
+}
+
+// -----------  END PHYSICAL ALLOCATOR FUNCTIONS ---------- \\
+// -----------  ----====------------------------- ---------- \\
+
 
 
 // setup
@@ -78,9 +352,9 @@ pub fn init_alloc() {
         count_4k_pages(area, &mut four_k_page_count);
     }
     // okay so here is our page_array
-    let page_array: &[PageArrayElement] = unsafe {
-        slice::from_raw_parts(
-            kernel_end() as *const PageArrayElement,
+    let page_array: &mut [PageArrayElement] = unsafe {
+        slice::from_raw_parts_mut(
+            kernel_end() as *mut PageArrayElement,
             four_k_page_count as usize,
         )
     };
@@ -226,6 +500,16 @@ pub fn init_alloc() {
             idx += 512;
         }
 
+        
+    // ---- INSTALL the allocator metadata into the global allocator ----
+    // Call install_page_array with three args: (ptr, len, first_usable_index)
+    KERNEL_PHYS_ALLOC.install_page_array(
+        page_array.as_mut_ptr(),
+        page_array.len(),
+        not_useful_usize,
+    );
+    serial_println!("free_4k_head = {:p}", KERNEL_PHYS_ALLOC.free_4k_head);
+    serial_println!("free_2mb_head = {:p}", KERNEL_PHYS_ALLOC.free_2mb_head);
     } // end unsafe
 
 }
