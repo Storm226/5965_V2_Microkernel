@@ -47,8 +47,8 @@ pub struct PageArrayElement {
 
 // this is what the physical allocator is
 pub struct PhysicalAllocator {
-    free_4k_head: *mut PageArrayElement,
-    free_2mb_head: *mut PageArrayElement,
+    pub free_4k_head: *mut PageArrayElement,
+    pub free_2mb_head: *mut PageArrayElement,
 
     /// Pointer to start of the page_array metadata (so we can index into it)
     page_array_base: *mut PageArrayElement,

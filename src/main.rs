@@ -11,6 +11,7 @@ mod memory;
 mod multibootv2;
 mod serial;
 
+use crate::memory::KERNEL_PHYS_ALLOC;
 use crate::multibootv2::BootInformation;
 use crate::multibootv2::MemoryMapTag;
 use core::panic::PanicInfo;
@@ -59,7 +60,6 @@ pub extern "C" fn rust_main() -> ! {
     unsafe {
         memory::init_alloc();
     }
-    
 
     loop {}
 }
