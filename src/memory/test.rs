@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::println;
+use crate::{serial, serial_println};
 use crate::memory::ALLOCATOR;
 use core::alloc::{GlobalAlloc,Layout};
 const KB4: usize = 4096;
@@ -38,13 +38,13 @@ fn simple_allocation() -> bool {
 
     if(*heap_value_1 != v1)
     {
-        println!("@ {} {} != {}", heap_value_1, *heap_value_1, v1);
+        serial_println!("@ {} {} != {}", heap_value_1, *heap_value_1, v1);
         return false;
     }
 
     if(*heap_value_2 != v2)
     {
-        println!("@ {} {} != {}", heap_value_2, *heap_value_2, v2);
+        serial_println!("@ {} {} != {}", heap_value_2, *heap_value_2, v2);
         return false;
     }
 
@@ -54,11 +54,11 @@ fn simple_allocation() -> bool {
 unsafe fn check(page:*mut u8, v: u8, size: usize) -> bool
 {
 
-    println!("checking page value {:?} v:{}" , page, v);
+    serial_println!("checking page value {:?} v:{}" , page, v);
     for i in 0 .. size {
         let pv = *page.add(i);
         if(pv != v){
-            println!(" -> failed @{:?}[{}] = {}" , page, i, pv);
+            serial_println!(" -> failed @{:?}[{}] = {}" , page, i, pv);
             return false;
         }
     }
@@ -78,24 +78,24 @@ unsafe fn test_allocator() -> bool {
     let page_sz_2m = 4096*512;
     let v = 1;
 
-    println!("Allocate some pages...");
+    serial_println!("Allocate some pages...");
 
     let test_page_4k = test_alloc_4k();
-    println!("alloc 4k @{:?}", test_page_4k);
+    serial_println!("alloc 4k @{:?}", test_page_4k);
     write(test_page_4k,v, page_sz_4k);
 
     let test_page_2m = test_alloc_2m();
-    println!("alloc 2m @{:?}", test_page_2m);
+    serial_println!("alloc 2m @{:?}", test_page_2m);
     write(test_page_2m,v, page_sz_2m);
 
 
     if(!check(test_page_4k, v, page_sz_4k)){
-        println!("4k failed");
+        serial_println!("4k failed");
         return false;
     }
 
     if(!check(test_page_2m, v, page_sz_2m)){
-        println!("2m failed");
+        serial_println!("2m failed");
         return false;
     }
 
@@ -106,20 +106,20 @@ unsafe fn test_allocator() -> bool {
     let arr_p2= test_alloc_4k();
     let arr2 = arr_p2 as *mut *mut u8;
 
-    println!("Allocating 2mb as 512 4k...");
+    serial_println!("Allocating 2mb as 512 4k...");
     for i in 0 .. 512 {
         let page = test_alloc_4k();
         write(page, 0xa, page_sz_4k);
         *arr.add(i) = page;
     }
 
-    println!("Allocating 2mb as 512 4k...");
+    serial_println!("Allocating 2mb as 512 4k...");
     for i in 0 .. 512 {
         let page = test_alloc_4k();
         for j in 0 .. 512 {
             if(*arr.add(j) == page) 
             {
-                println!("allocator leaks, should never get {:?}", page);
+                serial_println!("allocator leaks, should never get {:?}", page);
                 return false;
             }
         }
@@ -137,7 +137,7 @@ unsafe fn test_allocator() -> bool {
         }
     }
 
-    println!("Freeing first half....");
+    serial_println!("Freeing first half....");
     for i in 0 .. 256 {
         test_free_4k(*arr.add(i));
     }
@@ -146,7 +146,7 @@ unsafe fn test_allocator() -> bool {
         test_free_4k(*arr2.add(i));
     }
 
-    println!("Freeing second half....");
+    serial_println!("Freeing second half....");
     for i in 256.. 512 {
         test_free_4k(*arr.add(i));
     }
@@ -155,14 +155,14 @@ unsafe fn test_allocator() -> bool {
         test_free_4k(*arr2.add(i));
     }    
 
-    println!("Checking values...");
+    serial_println!("Checking values...");
     if(!check(test_page_4k, v, page_sz_4k)){
-        println!("4k failed after spray");
+        serial_println!("4k failed after spray");
         return false;
     }
 
     if(!check(test_page_2m, v, page_sz_2m)){
-        println!("2m failed after spray");
+        serial_println!("2m failed after spray");
         return false;
     }
 
@@ -185,7 +185,7 @@ fn large_vec() -> bool{
     let expected = (n - 1) * n / 2;
     if (sum != expected)
     {
-        println!("vec expected: {}, got: {}", expected, sum);
+        serial_println!("vec expected: {}, got: {}", expected, sum);
         return false;
     }
 
@@ -202,7 +202,7 @@ fn small_vec() -> bool{
     let expected = (n - 1) * n / 2;
     if (sum != expected)
     {
-        println!("vec expected: {}, got: {}", expected, sum);
+        serial_println!("vec expected: {}, got: {}", expected, sum);
         return false;
     }
 
@@ -213,25 +213,25 @@ pub fn test_all()
 {
     if(simple_allocation())
     {
-        println!("---- box test PASSED ----");
+        serial_println!("---- box test PASSED ----");
     }
 
     if(small_vec()) 
     {
-        println!("---- small vec test PASSED ----");
+        serial_println!("---- small vec test PASSED ----");
     }
 
 
     if(large_vec()) 
     {
-        println!("---- large vec test PASSED ----");
+        serial_println!("---- large vec test PASSED ----");
     }
 
 
     unsafe{
         if(test_allocator())
         {
-            println!("---- allocator test PASSED ----");
+            serial_println!("---- allocator test PASSED ----");
         }
     }
 }

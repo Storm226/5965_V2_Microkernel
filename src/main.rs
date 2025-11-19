@@ -11,10 +11,14 @@ mod memory;
 mod multibootv2;
 mod serial;
 
-use crate::memory::KERNEL_PHYS_ALLOC;
+extern crate alloc;
+
+use crate::memory::ALLOCATOR;
 use crate::multibootv2::BootInformation;
 use crate::multibootv2::MemoryMapTag;
 use core::panic::PanicInfo;
+use crate::memory::test::test_all;
+
 
 // A: we may not need this
 use crate::architecture::kernel_end;
@@ -60,6 +64,8 @@ pub extern "C" fn rust_main() -> ! {
     unsafe {
         memory::init_alloc();
     }
+    
+    test_all();
 
     loop {}
 }

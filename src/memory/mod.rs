@@ -1,6 +1,7 @@
 // Declare your allocator here
 
 
+pub mod test;
 
 use crate::_bootinfo;
 use crate::MemoryMapTag;
@@ -15,6 +16,7 @@ use core::debug_assert;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::option::Option;
+use core::prelude::rust_2024::global_allocator;
 
 
 #[repr(C)]
@@ -61,8 +63,12 @@ pub struct PhysicalAllocator {
 
 
 // this is a static reference to the physical allocator
-#[unsafe(no_mangle)]
-pub static mut KERNEL_PHYS_ALLOC: PhysicalAllocator = PhysicalAllocator::new_empty();
+// #[unsafe(no_mangle)]
+// #[global_allocator]
+// pub static mut KERNEL_PHYS_ALLOC: PhysicalAllocator = PhysicalAllocator::new_empty();
+#[global_allocator]
+pub static mut ALLOCATOR: PhysicalAllocator = PhysicalAllocator::new_empty();
+
 
 
 // ------------ SATISFY GLOBALALLOC TRAIT FOR RUST ------------\\
@@ -81,13 +87,13 @@ unsafe impl GlobalAlloc for PhysicalAllocator {
         // If user asked for alignment > 4KiB, prefer 2MB if available
         if layout.size() > 4096 && layout.size() <= 2 * 1024 * 1024 {
             // allocate 2MB
-            let a = &mut KERNEL_PHYS_ALLOC;
+            let a = &mut ALLOCATOR;
             return a.alloc_2mb();
         }
 
         // anything <= 4k -> give a 4k page
         if layout.size() <= 4096 {
-            let a = &mut KERNEL_PHYS_ALLOC;
+            let a = &mut ALLOCATOR;
             return a.alloc_4k();
         }
 
@@ -99,7 +105,7 @@ unsafe impl GlobalAlloc for PhysicalAllocator {
         if ptr.is_null() {
             return;
         }
-        let a = &mut KERNEL_PHYS_ALLOC;
+        let a = &mut ALLOCATOR;
 
         // compute index to inspect metadata
         match a.index_for_ptr(ptr) {
@@ -503,13 +509,13 @@ pub fn init_alloc() {
         
     // ---- INSTALL the allocator metadata into the global allocator ----
     // Call install_page_array with three args: (ptr, len, first_usable_index)
-    KERNEL_PHYS_ALLOC.install_page_array(
+    ALLOCATOR.install_page_array(
         page_array.as_mut_ptr(),
         page_array.len(),
         not_useful_usize,
     );
-    serial_println!("free_4k_head = {:p}", KERNEL_PHYS_ALLOC.free_4k_head);
-    serial_println!("free_2mb_head = {:p}", KERNEL_PHYS_ALLOC.free_2mb_head);
+    serial_println!("free_4k_head = {:p}", ALLOCATOR.free_4k_head);
+    serial_println!("free_2mb_head = {:p}", ALLOCATOR.free_2mb_head);
     } // end unsafe
 
 }
