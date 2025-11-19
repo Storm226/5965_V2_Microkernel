@@ -41,6 +41,12 @@ pub struct PageArrayElement {
     pub count: i32,
 }
 
+pub struct PhysicalAllocator {
+    free_4k_head: *mut PageArrayElement,
+    free_2mb_head: *mut PageArrayElement,
+}
+
+
 // setup
 pub fn init_alloc() {
     // lets figure out how many 4kb pages there are total first
@@ -78,6 +84,15 @@ pub fn init_alloc() {
             four_k_page_count as usize,
         )
     };
+
+    // so i think the math which figures out how many useful pages there are is actually 
+    // correct, which is excellent
+    serial_println!("kernel_end() = {:#x}", kernel_end() as usize);
+    serial_println!("page_array start = {:p}", page_array.as_ptr());
+    serial_println!("page_array end   = {:p}", unsafe {
+        page_array.as_ptr().add(page_array.len())
+    });
+
 
     // we must ensure that we do not give away ptrs to memory and overwrite our page_array
     let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<PageArrayElement>();
@@ -153,13 +168,16 @@ pub fn init_alloc() {
 
         // 2) mark pages before first usable page as Unavail and set 4k links there
         for idx in 0..not_useful_usize {
+            // this line is nice because at first 'add(count)' looks weird, but it is 
+            // rust compiler movign ptr ahead by count * sizeof(pointertype) which in this case
+            // is page_array_element
             let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
             (*p).state = State::Unavail;
             (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
             (*p).next_4k = if idx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
         }
 
-        // 3) Now the useful region: consume remainder (Free4K), then many 512-page superpages, then tail Free4K
+        // 3) Now the useful region: consume remainder (Free4K), then many 512-page superpages
         let mut idx = not_useful_usize;
 
         // consume remainder -> those useful pages that can't be part of a 2MB page
@@ -208,15 +226,6 @@ pub fn init_alloc() {
             idx += 512;
         }
 
-        // ----- NO TAIL ----- \\
-        // // leftover tail pages (less than 512) -> Free4K
-        // while idx < len_page_array_usize {
-        //     let p = page_array.as_ptr().add(idx) as *mut PageArrayElement;
-        //     (*p).state = State::Free4K;
-        //     (*p).prev_4k = if idx == 0 { ptr::null_mut() } else { page_array.as_ptr().add(idx - 1) as *mut _ };
-        //     (*p).next_4k = if idx + 1 >= len_page_array_usize { ptr::null_mut() } else { page_array.as_ptr().add(idx + 1) as *mut _ };
-        //     idx += 1;
-        // }
     } // end unsafe
 
 }
