@@ -109,6 +109,7 @@ unsafe fn test_allocator() -> bool {
     serial_println!("Allocating 2mb as 512 4k...");
     for i in 0 .. 512 {
         let page = test_alloc_4k();
+        //serial_println!("Page value as pointer : {:?}", page);
         write(page, 0xa, page_sz_4k);
         *arr.add(i) = page;
     }
