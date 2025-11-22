@@ -242,6 +242,17 @@ impl PhysicalAllocator {
                 // Save old head
                 let old = self.free_2mb_head;
 
+                // --- FIX START ---
+                // Save the next 2MB block BEFORE splitting 'old'
+                // because split_2mb(old) will corrupt/repurpose 'old'
+                let new = (*old).next_2mb;
+                self.free_2mb_head = new;
+
+                if !new.is_null() {
+                    (*new).prev_2mb = ptr::null_mut();
+                }
+                // --- FIX END ---
+
                 // Split it
                 self.split_2mb(old);
 
