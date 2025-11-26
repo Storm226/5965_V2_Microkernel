@@ -12,6 +12,7 @@ use crate::round_up;
 use crate::serial_println;
 use core::ptr;
 use core::ptr::null;
+use core::ptr::null_mut;
 use core::slice;
 use core::debug_assert;
 use core::alloc::{GlobalAlloc, Layout};
@@ -169,7 +170,7 @@ impl PhysicalAllocator {
 
         // find first free 4k and first free 2mb head from the metadata
         self.free_4k_head = ptr::null_mut();
-        self.free_2mb_head = ptr::null_mut();
+        self.free_2mb_head = ptr::null_mut(); 
 
         // scan metadata to set heads (first encountered free links)
         for i in 0..page_array_len {
@@ -239,37 +240,28 @@ impl PhysicalAllocator {
                     return ptr::null_mut();
                 }
 
-                // Save old head
-                let old = self.free_2mb_head;
+                // in this path, there is a 2mb page, so we will split it,
+                // and return a 4kb page from the newly added set of pages
+                    // if there is a 2mb page, split it into 512 4kb pages
+                    let old_2mb_head = self.free_2mb_head;
+                    self.split_2mb(old_2mb_head);
 
-                // --- FIX START ---
-                // Save the next 2MB block BEFORE splitting 'old'
-                // because split_2mb(old) will corrupt/repurpose 'old'
-                let new = (*old).next_2mb;
-                self.free_2mb_head = new;
+                    // Unlink old from the 2MB free list
+                    let new_2mb_head = (*old_2mb_head).next_2mb;
+                    self.free_2mb_head = new_2mb_head;
 
-                if !new.is_null() {
-                    (*new).prev_2mb = ptr::null_mut();
-                }
-                // --- FIX END ---
-
-                // Split it
-                self.split_2mb(old);
-
-                // Unlink old from the 2MB free list
-                let new = (*old).next_2mb;
-                self.free_2mb_head = new;
-
-                if !new.is_null() {
-                    (*new).prev_2mb = ptr::null_mut();
-                }
+                    // set the new heads previous to be null
+                    // as long as there is a 2mb head
+                    if !new_2mb_head.is_null() {
+                        (*new_2mb_head).prev_2mb = ptr::null_mut();
+                    }
             }
 
         // There is at least 1 4kb page on 4k list
 
         // Pop from 4K free list
-        let head = self.free_4k_head;
-        let next = (*head).next_4k;
+        let alloc_4kb_page = self.free_4k_head;
+        let next = (*alloc_4kb_page).next_4k;
 
         if !next.is_null() {
             (*next).prev_4k = ptr::null_mut();
@@ -278,9 +270,17 @@ impl PhysicalAllocator {
         self.free_4k_head = next;
 
         // Mark allocated
-        (*head).state = State::Alloc4K;
+        (*alloc_4kb_page).state = State::Alloc4K;
 
-        let idx = head.offset_from(self.page_array_base) as usize;
+        let idx = alloc_4kb_page.offset_from(self.page_array_base) as usize;
+
+        // if this 4kb page was a subpage, decrement superpage free count
+        let super_head = (*alloc_4kb_page).prev_2mb;
+        if !super_head.is_null() && (*alloc_4kb_page).next_2mb.is_null(){
+            (*super_head).count -= 1;
+        }
+
+        // return the 4kb page
         self.phys_for_index(idx) as *mut u8
 }
 
@@ -293,28 +293,45 @@ impl PhysicalAllocator {
             Some(i) => i,
             None => return,
         };
-        let p = self.page_array_base.add(idx);
+        let new_4k_head = self.page_array_base.add(idx);
 
         // sanity check
-        debug_assert!((*p).state == State::Alloc4K);
+        debug_assert!((*new_4k_head).state == State::Alloc4K);
 
-        (*p).state = State::Free4K;
+        // reach into page_array and mark this element as free_4k
+        (*new_4k_head).state = State::Free4K;
 
-        // push onto front of free_4k_head
+        // get super_head reference from this element in the page array
+        let super_head = (*new_4k_head).prev_2mb;
 
-        // set previous to be null -> this is new 4kb list head
-        (*p).prev_4k = ptr::null_mut();
+        // if this 4kb page is a subpage, its prev_2mb pointer should be init,
+        // and its next will never be init
+        // this is adjusting the superheads count eleemnt in the page_array -> correct
+        if !super_head.is_null() && (*new_4k_head).next_2mb.is_null(){
+            (*super_head).count += 1;
 
-        // set this new head's next ptr to the old free 4kb list head
-        (*p).next_4k = self.free_4k_head;
-
-        // if there is a free 4kb head, set its previous to be our new head
-        if !self.free_4k_head.is_null() {
-            (*self.free_4k_head).prev_4k = p;
+            // TODO: 
+            // if the superpage hits 512 free 4kb pages
+            // we should merge into a single 2mb page
+            if (*super_head).count == 512 {
+                self.merge_2mb(super_head);
+            }
         }
 
-        // finally, set the 4kb head to be the new correct head
-        self.free_4k_head = p;
+        // push onto front of free_4k_head
+            // set previous to be null -> this is new 4kb list head
+            (*new_4k_head).prev_4k = ptr::null_mut();
+
+            // set this new head's next ptr to the old free 4kb list head
+            (*new_4k_head).next_4k = self.free_4k_head;
+
+            // if there is a free 4kb head, set its previous to be our new head
+            if !self.free_4k_head.is_null() {
+                (*self.free_4k_head).prev_4k = new_4k_head;
+            }
+
+            // finally, set the 4kb head to be the new correct head
+            self.free_4k_head = new_4k_head;
     }
 
     /// Allocate one 2MB superpage (returns physical pointer as *mut u8)
@@ -378,6 +395,65 @@ impl PhysicalAllocator {
             (*self.free_2mb_head).prev_2mb = head;
         }
         self.free_2mb_head = head;
+    }
+
+
+    // given ptr to a 2mb page, "merge" all 512 4kb pages into a single
+    // 2mb page
+    // remove all 512 from 4k list, add to 2mb list
+    unsafe fn merge_2mb(&mut self, head_2mb: *mut PageArrayElement){
+        if !self.initialized.load(Ordering::Acquire) {
+            return;
+        }
+        let idx = head_2mb.offset_from(self.page_array_base) as usize;
+
+        // ensure that it is currently on the 4kb list and 
+        // its count is 512 free 4kb pages
+        debug_assert!((*head_2mb).state == State::Free4K);
+        debug_assert!((*head_2mb).count == 512);
+
+        for j in 0..512 {
+
+            // get to the jth subpage including the superpage element
+            let p = self.page_array_base.add(idx + j);
+            let current_2mb_head = self.free_2mb_head;
+
+            // deal with super page element 
+            if j == 0 {    
+                // if current 2mb head is not null, make its prev point to our new 2mb head
+                if !current_2mb_head.is_null(){
+                    (*current_2mb_head).prev_2mb = p;
+                    (*p).next_2mb = current_2mb_head;
+                    self.free_2mb_head = p;
+                }
+                // if current 2mb head is null
+                // this can be our new 2mb head
+                else {
+                    self.free_2mb_head = p;
+                    (*p).prev_2mb = null_mut();
+                    (*p).next_2mb = null_mut();
+                }
+
+                // in either case, we are merging a new 2mb page,
+                // its state == free2mb && count == 512
+                (*p).state = State::Free2MB;
+                (*p).count = 512;
+
+            }
+            
+            // deal with subpages
+            if j != 0 {
+
+                // ensure these elements are not on free 4kb list
+                (*p).prev_4k = ptr::null_mut();
+                (*p).next_4k = ptr::null_mut();
+
+                // TODO: does their prev2mb reference need to be changed? 
+
+            }
+
+        }
+
     }
 
     // Split a 2mb page into 512 free 4kb pages
@@ -649,13 +725,3 @@ fn count_4k_pages(area: &MemoryArea, page_count: &mut u64) {
     *page_count += (area.size() / 4096) as u64;
 }
 
-//
-//give_me_a_page(int n_pages){}
-
-// given some 4kb pages, merge them into a contiguous
-// 2MB page
-//merge(){}
-
-// given a 2MB page, split into a bunch
-// of 4kb pages
-//split(){}
