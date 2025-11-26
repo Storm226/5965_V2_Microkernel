@@ -242,12 +242,14 @@ impl PhysicalAllocator {
 
                 // in this path, there is a 2mb page, so we will split it,
                 // and return a 4kb page from the newly added set of pages
-                    // if there is a 2mb page, split it into 512 4kb pages
                     let old_2mb_head = self.free_2mb_head;
+                    let new_2mb_head = (*old_2mb_head).next_2mb;
+
+                    
+                    // split the old 2mb_head
                     self.split_2mb(old_2mb_head);
 
                     // Unlink old from the 2MB free list
-                    let new_2mb_head = (*old_2mb_head).next_2mb;
                     self.free_2mb_head = new_2mb_head;
 
                     // set the new heads previous to be null
@@ -351,6 +353,8 @@ impl PhysicalAllocator {
         // Mark all 512 pages as Alloc2MB
         // head.index ... head.index + 511
         let head_idx = head.offset_from(self.page_array_base) as isize as usize;
+
+        // TODO: this should just be 512
         let count = (*head).count as usize;
         debug_assert!(count == 512);
 
@@ -381,13 +385,45 @@ impl PhysicalAllocator {
         // mark all pages Free2MB
         for j in 0..512usize {
             let p = self.page_array_base.add(idx + j);
-            (*p).state = State::Free2MB;
+            
             // restore 4k links (we keep them as neutral; they were set during init)
-            // keep prev_2mb/next_2mb null for now; we'll push head onto 2mb free list
-            (*p).prev_4k = if idx + j == 0 { ptr::null_mut() } else { self.page_array_base.add(idx + j - 1) };
-            (*p).next_4k = if idx + j + 1 >= self.page_array_len { ptr::null_mut() } else { self.page_array_base.add(idx + j + 1) };
-        }
+            // // keep prev_2mb/next_2mb null for now; we'll push head onto 2mb free list
 
+            // this is not correct -> every subpage of a 2mb page 
+            // owner page : count == 512 state == free_2mb
+            // subpage : state == free_2mb prev_2mb = head_2mb
+            // (*p).state = State::Free2MB;
+            // (*p).prev_4k = if idx + j == 0 { ptr::null_mut() } else { self.page_array_base.add(idx + j - 1) };
+            // (*p).next_4k = if idx + j + 1 >= self.page_array_len { ptr::null_mut() } else { self.page_array_base.add(idx + j + 1) };
+
+            // deal with superpage
+            if j == 0 {
+                (*p).state = State::Free2MB;
+                (*p).count = 512;
+
+                // update the ptr to 2mb head
+                    // current head == null
+                    if(self.free_2mb_head.is_null()){
+                        self.free_2mb_head = p;
+                        (*p).prev_2mb = null_mut();
+                        (*p).next_2mb = null_mut();
+                    }
+                    // current head is not null
+                    else {
+                        (*self.free_2mb_head).prev_2mb = p;
+                        (*p).next_2mb = self.free_2mb_head;
+                        self.free_2mb_head = p;
+                    }
+            }
+
+            // deal with subpages
+            else {
+                (*p).state = State::Free2MB;
+                (*p).next_4k = ptr::null_mut();
+                (*p).prev_4k = ptr::null_mut();
+
+            }
+        }
         // link head into free_2mb_head list
         (*head).prev_2mb = ptr::null_mut();
         (*head).next_2mb = self.free_2mb_head;
