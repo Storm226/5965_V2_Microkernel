@@ -232,6 +232,8 @@ impl PhysicalAllocator {
     /// Allocate one 4KB page (returns physical pointer as *mut u8)
     pub unsafe fn alloc_4k(&mut self) -> *mut u8 {
         
+        // serial_println!("alloc 4k starting");
+
         // If there is no more free 4kb pages on 4k list 
             if self.free_4k_head.is_null() {
 
@@ -246,6 +248,7 @@ impl PhysicalAllocator {
                     let new_2mb_head = (*old_2mb_head).next_2mb;
 
                     
+                    // serial_println!("calling split 2mb");
                     // split the old 2mb_head
                     self.split_2mb(old_2mb_head);
 
@@ -288,6 +291,8 @@ impl PhysicalAllocator {
 
     /// Free a single 4KB page given pointer (assumes identity mapping)
     pub unsafe fn free_4k(&mut self, pptr: *mut u8) {
+        // serial_println!("free 4k starting");
+
         if !self.initialized.load(Ordering::Acquire) {
             return;
         }
@@ -338,6 +343,8 @@ impl PhysicalAllocator {
 
     /// Allocate one 2MB superpage (returns physical pointer as *mut u8)
     pub unsafe fn alloc_2mb(&mut self) -> *mut u8 {
+
+        // serial_println!("alloc 2mb starting");
         if self.free_2mb_head.is_null() {
             return ptr::null_mut();
         }
@@ -371,6 +378,10 @@ impl PhysicalAllocator {
 
     /// Free a 2MB superpage given pointer (assumes pointer is head of the 2MB region)
     pub unsafe fn free_2mb(&mut self, pptr: *mut u8) {
+
+        
+         serial_println!("free 2mb starting");
+
         if !self.initialized.load(Ordering::Acquire) {
             return;
         }
@@ -383,7 +394,7 @@ impl PhysicalAllocator {
         debug_assert!((*head).state == State::Alloc2MB);
 
         // mark all pages Free2MB
-        for j in 0..512usize {
+        for j in 0..512 {
             let p = self.page_array_base.add(idx + j);
             
             // restore 4k links (we keep them as neutral; they were set during init)
@@ -424,13 +435,6 @@ impl PhysicalAllocator {
 
             }
         }
-        // link head into free_2mb_head list
-        (*head).prev_2mb = ptr::null_mut();
-        (*head).next_2mb = self.free_2mb_head;
-        if !self.free_2mb_head.is_null() {
-            (*self.free_2mb_head).prev_2mb = head;
-        }
-        self.free_2mb_head = head;
     }
 
 
@@ -438,6 +442,9 @@ impl PhysicalAllocator {
     // 2mb page
     // remove all 512 from 4k list, add to 2mb list
     unsafe fn merge_2mb(&mut self, head_2mb: *mut PageArrayElement){
+        
+        // serial_println!("merge 2mb starting");
+
         if !self.initialized.load(Ordering::Acquire) {
             return;
         }
@@ -494,6 +501,9 @@ impl PhysicalAllocator {
 
     // Split a 2mb page into 512 free 4kb pages
     unsafe fn split_2mb(&mut self, head_2mb: *mut PageArrayElement) {
+
+
+        // serial_println!("split 2mb starting");
         if !self.initialized.load(Ordering::Acquire) {
             return;
         }
@@ -501,12 +511,19 @@ impl PhysicalAllocator {
         // Compute index of the head metadata element
         let idx = head_2mb.offset_from(self.page_array_base) as usize;
 
+        // serial_println!("state is {:?}", (*head_2mb).state);
+
         // Ensure we really are splitting a free 2MB block
         debug_assert!((*head_2mb).state == State::Free2MB);
+        // serial_println!("got pass state assertion ");
         debug_assert!((*head_2mb).count == 512);
+        // serial_println!("got pass count assertion ");
 
         // Each of the 512 pages becomes a free 4K page
         for j in 0..512 {
+
+            // serial_println!("current j value is : {}  ", j);
+
             let p = self.page_array_base.add(idx + j);
 
             (*p).state = State::Free4K;
@@ -530,6 +547,9 @@ impl PhysicalAllocator {
                 (*p).prev_4k = ptr::null_mut();
             }
         };
+
+        // serial_println!("split 2mb finished");
+
     }
 
 
