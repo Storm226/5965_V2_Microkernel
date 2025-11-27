@@ -396,20 +396,27 @@ impl PhysicalAllocator {
             // (*p).prev_4k = if idx + j == 0 { ptr::null_mut() } else { self.page_array_base.add(idx + j - 1) };
             // (*p).next_4k = if idx + j + 1 >= self.page_array_len { ptr::null_mut() } else { self.page_array_base.add(idx + j + 1) };
 
+            // in free 2mb, we set the state to free 2mb regardless
+            // TODO: it needs to be p here NOT head
+            (*head).state = State::Free2MB;
+            (*head).prev_4k = null_mut();
+            (*head).next_4k = null_mut();
+            
             // deal with superpage
             if j == 0 {
-                (*p).state = State::Free2MB;
                 (*p).count = 512;
-
                 // update the ptr to 2mb head
                     // current head == null
                     if(self.free_2mb_head.is_null()){
+                        // set the free_2mb head ptr
                         self.free_2mb_head = p;
                         (*p).prev_2mb = null_mut();
                         (*p).next_2mb = null_mut();
                     }
                     // current head is not null
                     else {
+
+                        // update the free_2mb ptr
                         (*self.free_2mb_head).prev_2mb = p;
                         (*p).next_2mb = self.free_2mb_head;
                         self.free_2mb_head = p;
@@ -418,12 +425,12 @@ impl PhysicalAllocator {
 
             // deal with subpages
             else {
-                (*p).state = State::Free2MB;
                 (*p).next_4k = ptr::null_mut();
                 (*p).prev_4k = ptr::null_mut();
-
             }
         }
+
+        //TODO THIS IS FUCKING MY SHIT UP 
         // link head into free_2mb_head list
         (*head).prev_2mb = ptr::null_mut();
         (*head).next_2mb = self.free_2mb_head;
