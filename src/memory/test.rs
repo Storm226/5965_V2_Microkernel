@@ -51,6 +51,9 @@ fn simple_allocation() -> bool {
     return true;
 }
 
+// take a pointer 'page' and value 'v'
+// then, dereference 'page' at offset
+// compare value, if not equal,
 unsafe fn check(page:*mut u8, v: u8, size: usize) -> bool
 {
 
@@ -66,6 +69,10 @@ unsafe fn check(page:*mut u8, v: u8, size: usize) -> bool
 }
 
 
+// take a pointer "page" and a value v, 
+// dereference the pointer at an offset of 'i'
+// and write into it v
+// if size == 4096, write v 4096 times
 unsafe fn write(page:*mut u8, v: u8, size: usize)
 {
     for i in 0..size {
@@ -80,20 +87,31 @@ unsafe fn test_allocator() -> bool {
 
     serial_println!("Allocate some pages...");
 
+
+    // so get a pointer to a 4kb page\
+    // write 4096 bytes to the 4096 page
     let test_page_4k = test_alloc_4k();
     serial_println!("alloc 4k @{:?}", test_page_4k);
     write(test_page_4k,v, page_sz_4k);
 
+
+
+
+    // allocate a 2mb page, 
+    // write 4096 * 512 bytes to it 
+    // each byte simply increases in value 0 -> 4096 * 512
     let test_page_2m = test_alloc_2m();
     serial_println!("alloc 2m @{:?}", test_page_2m);
     write(test_page_2m,v, page_sz_2m);
 
 
+    // iterate over the 4kb page, make sure you can correctly write
     if(!check(test_page_4k, v, page_sz_4k)){
         serial_println!("4k failed");
         return false;
     }
 
+    // iterate over the 2mb page, make sure you can correctly write
     if(!check(test_page_2m, v, page_sz_2m)){
         serial_println!("2m failed");
         return false;

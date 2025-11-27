@@ -396,17 +396,7 @@ impl PhysicalAllocator {
         // mark all pages Free2MB
         for j in 0..512 {
             let p = self.page_array_base.add(idx + j);
-            
-            // restore 4k links (we keep them as neutral; they were set during init)
-            // // keep prev_2mb/next_2mb null for now; we'll push head onto 2mb free list
-
-            // this is not correct -> every subpage of a 2mb page 
-            // owner page : count == 512 state == free_2mb
-            // subpage : state == free_2mb prev_2mb = head_2mb
-            // (*p).state = State::Free2MB;
-            // (*p).prev_4k = if idx + j == 0 { ptr::null_mut() } else { self.page_array_base.add(idx + j - 1) };
-            // (*p).next_4k = if idx + j + 1 >= self.page_array_len { ptr::null_mut() } else { self.page_array_base.add(idx + j + 1) };
-
+        
             // deal with superpage
             if j == 0 {
                 (*p).state = State::Free2MB;
