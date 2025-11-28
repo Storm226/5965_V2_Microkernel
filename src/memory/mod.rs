@@ -10,6 +10,7 @@ use crate::multibootv2;
 use crate::multibootv2::MemoryArea;
 use crate::round_up;
 use crate::serial_println;
+use core::ops::Sub;
 use core::ptr;
 use core::ptr::null;
 use core::ptr::null_mut;
@@ -34,6 +35,13 @@ pub enum State {
     Alloc2MB,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Subpage {
+    Two_MB_Head,
+    Subpage,
+    Neither,
+}
+
 #[repr(C)]
 pub struct PageArrayElement {
     // Pointers for 4 KB page linked list
@@ -53,6 +61,8 @@ pub struct PageArrayElement {
 
     // tracks 4k pages in 2mb superpage
     pub count: i32,
+
+    pub is_subpage: Subpage,
 }
 
 
@@ -123,14 +133,20 @@ unsafe impl GlobalAlloc for PhysicalAllocator {
                 // add doesn't 'add' an element to the array
                 // it simply advanced the pointer by <count> steps based on type 
                 let p = allocator.page_array_base.add(idx);
+
+                serial_println!("trying to free page {:?}", p);
+                serial_println!("state of page p is  {:?}", (*p).state);
+                serial_println!("subpage state of page p is  {:?}", (*p).is_subpage);
+
                 match (*p).state {
                     State::Alloc4K => allocator.free_4k(ptr),
                     State::Alloc2MB => allocator.free_2mb(ptr),
                     other => {
                         // double-free or invalid free — ignore or panic depending on policy
-                        debug_assert!(false, "freeing pointer that is not allocated: state = {:?}", other);
+                       serial_println!("Trying to do a double free or something");
                     }
                 }
+                serial_println!("finished freeing page {:?}", p);
             }
             None => {
                 // pointer outside physical coverage; ignore
@@ -232,7 +248,7 @@ impl PhysicalAllocator {
     /// Allocate one 4KB page (returns physical pointer as *mut u8)
     pub unsafe fn alloc_4k(&mut self) -> *mut u8 {
         
-        // serial_println!("alloc 4k starting");
+         serial_println!("alloc 4k starting");
 
         // If there is no more free 4kb pages on 4k list 
             if self.free_4k_head.is_null() {
@@ -291,7 +307,7 @@ impl PhysicalAllocator {
 
     /// Free a single 4KB page given pointer (assumes identity mapping)
     pub unsafe fn free_4k(&mut self, pptr: *mut u8) {
-        // serial_println!("free 4k starting");
+         serial_println!("free 4k starting");
 
         if !self.initialized.load(Ordering::Acquire) {
             return;
@@ -302,29 +318,53 @@ impl PhysicalAllocator {
         };
         let new_4k_head = self.page_array_base.add(idx);
 
+
+                 serial_println!("sanity check start");
+
         // sanity check
         debug_assert!((*new_4k_head).state == State::Alloc4K);
 
+                 serial_println!("sanity check finish");
+
+
         // reach into page_array and mark this element as free_4k
         (*new_4k_head).state = State::Free4K;
+    
+       let super_head = match (*new_4k_head).is_subpage {
+            Subpage::Subpage => (*new_4k_head).prev_2mb,
+            Subpage::Neither  => null_mut(),
+            Subpage::Two_MB_Head => new_4k_head, 
+        };
 
-        // get super_head reference from this element in the page array
-        let super_head = (*new_4k_head).prev_2mb;
+        //serial_println!("super head defined as {?:}", (*super_head).is_subpage);
 
-        // if this 4kb page is a subpage, its prev_2mb pointer should be init,
-        // and its next will never be init
-        // this is adjusting the superheads count eleemnt in the page_array -> correct
-        if !super_head.is_null() && (*new_4k_head).next_2mb.is_null(){
+
+        // if the freed 4kb page is either a 2mb head or a subpage
+        // reach into super_head and icnremenet its count aptly
+        // call merge if necessary
+        if  (*new_4k_head).is_subpage != Subpage::Neither{
             (*super_head).count += 1;
 
-            // TODO: 
             // if the superpage hits 512 free 4kb pages
             // we should merge into a single 2mb page
             if (*super_head).count == 512 {
+                serial_println!("calling merge2mb");
+
+                // we also need to mark super_head as free4k
+                (*super_head).state = State::Free4K;
+
                 self.merge_2mb(super_head);
+
+                serial_println!("return from merge2b");
+                
+                // if you merge a 2mb page, you should probably not put into
+                // 4kb page list
+                serial_println!("Free 4k finish via merge2mb");
+
+                return;
             }
         }
-
+      
         // push onto front of free_4k_head
             // set previous to be null -> this is new 4kb list head
             (*new_4k_head).prev_4k = ptr::null_mut();
@@ -337,6 +377,8 @@ impl PhysicalAllocator {
                 (*self.free_4k_head).prev_4k = new_4k_head;
             }
 
+            serial_println!("Free 4k finish");
+
             // finally, set the 4kb head to be the new correct head
             self.free_4k_head = new_4k_head;
     }
@@ -344,7 +386,7 @@ impl PhysicalAllocator {
     /// Allocate one 2MB superpage (returns physical pointer as *mut u8)
     pub unsafe fn alloc_2mb(&mut self) -> *mut u8 {
 
-        // serial_println!("alloc 2mb starting");
+         serial_println!("alloc 2mb starting");
         if self.free_2mb_head.is_null() {
             return ptr::null_mut();
         }
@@ -380,7 +422,7 @@ impl PhysicalAllocator {
     pub unsafe fn free_2mb(&mut self, pptr: *mut u8) {
 
         
-         serial_println!("free 2mb starting");
+        serial_println!("free 2mb starting");
 
         if !self.initialized.load(Ordering::Acquire) {
             return;
@@ -408,12 +450,22 @@ impl PhysicalAllocator {
                         self.free_2mb_head = p;
                         (*p).prev_2mb = null_mut();
                         (*p).next_2mb = null_mut();
+                        
+                        // ALEX TGIVING
+                        (*p).next_4k = ptr::null_mut();
+                        (*p).prev_4k = ptr::null_mut();
+
                     }
                     // current head is not null
                     else {
                         (*self.free_2mb_head).prev_2mb = p;
                         (*p).next_2mb = self.free_2mb_head;
                         self.free_2mb_head = p;
+
+                        // ALEX TGIVING
+                        (*p).next_4k = ptr::null_mut();
+                        (*p).prev_4k = ptr::null_mut();
+
                     }
             }
 
@@ -422,7 +474,6 @@ impl PhysicalAllocator {
                 (*p).state = State::Free2MB;
                 (*p).next_4k = ptr::null_mut();
                 (*p).prev_4k = ptr::null_mut();
-
             }
         }
     }
@@ -442,8 +493,14 @@ impl PhysicalAllocator {
 
         // ensure that it is currently on the 4kb list and 
         // its count is 512 free 4kb pages
+        serial_println!("step 1");
+        serial_println!("state was : {:?} ", (*head_2mb).state);
         debug_assert!((*head_2mb).state == State::Free4K);
+        serial_println!("step 2");
+        serial_println!("Count was : {} ", (*head_2mb).count);
         debug_assert!((*head_2mb).count == 512);
+
+        serial_println!("Past the merge 2mb assertions");
 
         for j in 0..512 {
 
@@ -480,7 +537,7 @@ impl PhysicalAllocator {
                 // ensure these elements are not on free 4kb list
                 (*p).prev_4k = ptr::null_mut();
                 (*p).next_4k = ptr::null_mut();
-
+                (*p).state = State::Free2MB;
                 // TODO: does their prev2mb reference need to be changed? 
 
             }
@@ -493,7 +550,7 @@ impl PhysicalAllocator {
     unsafe fn split_2mb(&mut self, head_2mb: *mut PageArrayElement) {
 
 
-        // serial_println!("split 2mb starting");
+         serial_println!("split 2mb starting");
         if !self.initialized.load(Ordering::Acquire) {
             return;
         }
@@ -668,6 +725,9 @@ pub fn init_alloc() {
             (*p).prev_2mb = ptr::null_mut();
             (*p).state = State::Unavail;
             (*p).count = 0;
+
+            // ALEX TGIVING
+            (*p).is_subpage = Subpage::Neither;
         }
 
         // 2) mark pages before first usable page as Unavail and set 4k links there
@@ -715,6 +775,9 @@ pub fn init_alloc() {
             (*head).state = State::Free2MB;
             (*head).count = 512;
 
+            // ALEX TGIVING
+            (*head).is_subpage = Subpage::Two_MB_Head;
+
             // initialize all 512 pages in the superpage
             for j in 0..512 {
                 let pidx = idx + j;
@@ -738,6 +801,7 @@ pub fn init_alloc() {
 
                     // (its next_2mb must always be null)
                     (*p).next_2mb = ptr::null_mut();
+                    (*p).is_subpage = Subpage::Subpage;
                 }
             }
             counter_2mb_pages_init += 1;
