@@ -537,7 +537,7 @@ impl PhysicalAllocator {
                 // ensure these elements are not on free 4kb list
                 (*p).prev_4k = ptr::null_mut();
                 (*p).next_4k = ptr::null_mut();
-                (*p).state = State::Free2MB;
+            (*p).state = State::Free2MB;
                 // TODO: does their prev2mb reference need to be changed? 
 
             }
