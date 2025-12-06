@@ -134,19 +134,19 @@ unsafe impl GlobalAlloc for PhysicalAllocator {
                 // it simply advanced the pointer by <count> steps based on type 
                 let p = allocator.page_array_base.add(idx);
 
-                serial_println!("trying to free page {:?}", p);
-                serial_println!("state of page p is  {:?}", (*p).state);
-                serial_println!("subpage state of page p is  {:?}", (*p).is_subpage);
+                // serial_println!("trying to free page {:?}", p);
+                // serial_println!("state of page p is  {:?}", (*p).state);
+                // serial_println!("subpage state of page p is  {:?}", (*p).is_subpage);
 
                 match (*p).state {
                     State::Alloc4K => allocator.free_4k(ptr),
                     State::Alloc2MB => allocator.free_2mb(ptr),
                     other => {
                         // double-free or invalid free — ignore or panic depending on policy
-                       serial_println!("Trying to do a double free or something");
+//                       serial_println!("Trying to do a double free or something");
                     }
                 }
-                serial_println!("finished freeing page {:?}", p);
+  //              serial_println!("finished freeing page {:?}", p);
             }
             None => {
                 // pointer outside physical coverage; ignore
@@ -248,7 +248,7 @@ impl PhysicalAllocator {
     /// Allocate one 4KB page (returns physical pointer as *mut u8)
     pub unsafe fn alloc_4k(&mut self) -> *mut u8 {
         
-         serial_println!("alloc 4k starting");
+        // serial_println!("alloc 4k starting");
 
         // If there is no more free 4kb pages on 4k list 
             if self.free_4k_head.is_null() {
@@ -307,7 +307,7 @@ impl PhysicalAllocator {
 
     /// Free a single 4KB page given pointer (assumes identity mapping)
     pub unsafe fn free_4k(&mut self, pptr: *mut u8) {
-         serial_println!("free 4k starting");
+         //serial_println!("free 4k starting");
 
         if !self.initialized.load(Ordering::Acquire) {
             return;
@@ -319,12 +319,12 @@ impl PhysicalAllocator {
         let new_4k_head = self.page_array_base.add(idx);
 
 
-                 serial_println!("sanity check start");
+              //   serial_println!("sanity check start");
 
         // sanity check
         debug_assert!((*new_4k_head).state == State::Alloc4K);
 
-                 serial_println!("sanity check finish");
+              //   serial_println!("sanity check finish");
 
 
         // reach into page_array and mark this element as free_4k
@@ -348,18 +348,18 @@ impl PhysicalAllocator {
             // if the superpage hits 512 free 4kb pages
             // we should merge into a single 2mb page
             if (*super_head).count == 512 {
-                serial_println!("calling merge2mb");
+               // serial_println!("calling merge2mb");
 
                 // we also need to mark super_head as free4k
                 (*super_head).state = State::Free4K;
 
                 self.merge_2mb(super_head);
 
-                serial_println!("return from merge2b");
+               // serial_println!("return from merge2b");
                 
                 // if you merge a 2mb page, you should probably not put into
                 // 4kb page list
-                serial_println!("Free 4k finish via merge2mb");
+               // serial_println!("Free 4k finish via merge2mb");
 
                 return;
             }
@@ -377,7 +377,7 @@ impl PhysicalAllocator {
                 (*self.free_4k_head).prev_4k = new_4k_head;
             }
 
-            serial_println!("Free 4k finish");
+           // serial_println!("Free 4k finish");
 
             // finally, set the 4kb head to be the new correct head
             self.free_4k_head = new_4k_head;
@@ -386,7 +386,7 @@ impl PhysicalAllocator {
     /// Allocate one 2MB superpage (returns physical pointer as *mut u8)
     pub unsafe fn alloc_2mb(&mut self) -> *mut u8 {
 
-         serial_println!("alloc 2mb starting");
+        // serial_println!("alloc 2mb starting");
         if self.free_2mb_head.is_null() {
             return ptr::null_mut();
         }
@@ -422,7 +422,7 @@ impl PhysicalAllocator {
     pub unsafe fn free_2mb(&mut self, pptr: *mut u8) {
 
         
-        serial_println!("free 2mb starting");
+        //serial_println!("free 2mb starting");
 
         if !self.initialized.load(Ordering::Acquire) {
             return;
@@ -493,14 +493,14 @@ impl PhysicalAllocator {
 
         // ensure that it is currently on the 4kb list and 
         // its count is 512 free 4kb pages
-        serial_println!("step 1");
-        serial_println!("state was : {:?} ", (*head_2mb).state);
-        debug_assert!((*head_2mb).state == State::Free4K);
-        serial_println!("step 2");
-        serial_println!("Count was : {} ", (*head_2mb).count);
-        debug_assert!((*head_2mb).count == 512);
+        // serial_println!("step 1");
+        // serial_println!("state was : {:?} ", (*head_2mb).state);
+        // debug_assert!((*head_2mb).state == State::Free4K);
+        // serial_println!("step 2");
+        // serial_println!("Count was : {} ", (*head_2mb).count);
+        // debug_assert!((*head_2mb).count == 512);
 
-        serial_println!("Past the merge 2mb assertions");
+        // serial_println!("Past the merge 2mb assertions");
 
         for j in 0..512 {
 
@@ -619,7 +619,7 @@ pub fn init_alloc() {
     let mut two_mb_page_count: u64 = 0;
 
     let bootinfo = unsafe {
-        serial_println!("multibootv2 tag found at {:x}", _bootinfo as usize);
+        // serial_println!("multibootv2 tag found at {:x}", _bootinfo as usize);
         multibootv2::load(_bootinfo)
     };
     // we do indeed have kernel end address
@@ -627,13 +627,13 @@ pub fn init_alloc() {
     let memory_map_tag: &MemoryMapTag = bootinfo.memory_map_tag().unwrap();
     // Iterate over the memory areas
     for area in memory_map_tag.memory_areas() {
-        serial_println!(
-            "Memory area: start=0x{:x}, end=0x{:x}, size={} bytes, type={}",
-            area.start_address(),
-            area.end_address(),
-            area.size(),
-            area.typ()
-        );
+        // serial_println!(
+        //     "Memory area: start=0x{:x}, end=0x{:x}, size={} bytes, type={}",
+        //     area.start_address(),
+        //     area.end_address(),
+        //     area.size(),
+        //     area.typ()
+        // );
 
         // for each area accumulate n_pages as apt
         count_4k_pages(area, &mut four_k_page_count);
@@ -648,18 +648,18 @@ pub fn init_alloc() {
 
     // so i think the math which figures out how many useful pages there are is actually 
     // correct, which is excellent
-    serial_println!("kernel_end() = {:#x}", kernel_end() as usize);
-    serial_println!("page_array start = {:p}", page_array.as_ptr());
-    serial_println!("page_array end   = {:p}", unsafe {
-        page_array.as_ptr().add(page_array.len())
-    });
+    // serial_println!("kernel_end() = {:#x}", kernel_end() as usize);
+    // serial_println!("page_array start = {:p}", page_array.as_ptr());
+    // serial_println!("page_array end   = {:p}", unsafe {
+    //     page_array.as_ptr().add(page_array.len())
+    // });
 
 
     // we must ensure that we do not give away ptrs to memory and overwrite our page_array
     let page_array_size_bytes = four_k_page_count as usize * core::mem::size_of::<PageArrayElement>();
     let page_array_pages = (page_array_size_bytes + 4095) / 4096; // round up
 
-    serial_println!("the number of pages our page_array occupies is: {}", page_array_pages);
+    // serial_println!("the number of pages our page_array occupies is: {}", page_array_pages);
     
     // we need to figure out how many 2mb pages we can get and we also need to define the boundary of where we begin
     // allocating 2mb pages
@@ -672,7 +672,7 @@ pub fn init_alloc() {
     // YES IT MAKES SENSE
     // 2089! thats how many pages we mark as unavail
 
-    serial_println!("The kernel ends at : {}", pages_up_to_kernel_end);
+    // serial_println!("The kernel ends at : {}", pages_up_to_kernel_end);
 
     // how many 4k pages are useful to the system
     // this number indicates starting from the next 4k page boundary from kernel end, how
@@ -685,25 +685,25 @@ pub fn init_alloc() {
     let mut remainder: u64 = useful_pages_count % 512;
 
     // 32639 total 4k pages (on my machine) -> 383 first pages can never be a complete 2mb page
-    serial_println!("The total number of four kb pages is:  {}", four_k_page_count);
+    // serial_println!("The total number of four kb pages is:  {}", four_k_page_count);
 
-    // 63 total 2mb pages (on my machine)
-    serial_println!("The total number of 2MB pages is:  {}", two_mb_page_count);
+    // // 63 total 2mb pages (on my machine)
+    // serial_println!("The total number of 2MB pages is:  {}", two_mb_page_count);
 
-    // 30550
-    serial_println!("The number of useful four kb pages is:  {}", useful_pages_count);
+    // // 30550
+    // serial_println!("The number of useful four kb pages is:  {}", useful_pages_count);
 
-    // 2089
-    serial_println!(
-        "The amount of fourkb pages which come first and so are not useful is: {}",
-        not_useful_pages_count
-    );
+    // // 2089
+    // serial_println!(
+    //     "The amount of fourkb pages which come first and so are not useful is: {}",
+    //     not_useful_pages_count
+    // );
 
-    // 342
-    serial_println!(
-        "The number of 4kb pages which are useful but cannot become a 2mb page is:  {}",
-        remainder
-    );
+    // // 342
+    // serial_println!(
+    //     "The number of 4kb pages which are useful but cannot become a 2mb page is:  {}",
+    //     remainder
+    // );
 
     unsafe {
         // Use usize for indices
@@ -816,8 +816,8 @@ pub fn init_alloc() {
         page_array.len(),
         not_useful_usize,
     );
-    serial_println!("free_4k_head = {:p}", ALLOCATOR.free_4k_head);
-    serial_println!("free_2mb_head = {:p}", ALLOCATOR.free_2mb_head);
+    // serial_println!("free_4k_head = {:p}", ALLOCATOR.free_4k_head);
+    // serial_println!("free_2mb_head = {:p}", ALLOCATOR.free_2mb_head);
     } // end unsafe
 
 }
