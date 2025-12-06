@@ -10,7 +10,7 @@ mod interrupt;
 mod memory;
 mod multibootv2;
 mod serial;
-pub use serial::serial_println as println;
+pub use crate::serial_println as println;
 
 extern crate alloc;
 
